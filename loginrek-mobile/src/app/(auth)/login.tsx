@@ -191,41 +191,6 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          {/* Tombol Masuk Langsung Cepat (Tanpa Ketik Akun) */}
-          <Pressable
-            accessibilityRole="button"
-            onPress={async () => {
-              const defaultUser: UserAccount = {
-                id: 'usr-10',
-                email: 'wicaksono@loginrek.com',
-                passwords: ['123456'],
-                fullName: 'Wicaksono',
-                role: 'HRD',
-                onTimeCount: 0,
-                lateCount: 0,
-                todayCheckIn: null,
-                history: [],
-              };
-              await userStore.setCurrentUser(defaultUser);
-              await tokenStorage.set('token-auto-demo');
-              setAccessToken('token-auto-demo');
-              router.replace('/(app)/home');
-            }}
-            style={{
-              marginBottom: 14,
-              paddingVertical: 13,
-              borderRadius: 12,
-              backgroundColor: '#E6F4F5',
-              alignItems: 'center',
-              borderWidth: 1.5,
-              borderColor: '#0E7C86',
-            }}
-          >
-            <Text style={{ color: '#0E7C86', fontWeight: '700', fontSize: 15 }}>
-              ? Masuk Langsung (Tanpa Ketik Akun)
-            </Text>
-          </Pressable>
-
           {/* Tombol Masuk */}
           <Pressable
             accessibilityRole="button"
