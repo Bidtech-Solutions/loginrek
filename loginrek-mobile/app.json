@@ -11,7 +11,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.loginrek",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "loginrek membutuhkan akses kamera untuk foto selfie absensi.",
+        "NSLocationWhenInUseUsageDescription": "loginrek membutuhkan akses lokasi untuk memastikan Anda berada di area kantor.",
+        "NSPhotoLibraryUsageDescription": "loginrek membutuhkan izin akses galeri foto untuk mengubah foto profil akun Anda."
       }
     },
     "android": {
@@ -38,10 +41,21 @@
           "resizeMode": "contain",
           "backgroundColor": "#0E7C86"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "09453540-1166-4260-a949-8eb417e8e778"
+      }
     }
   }
 }

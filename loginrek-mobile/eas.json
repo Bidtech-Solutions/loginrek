@@ -13,9 +13,12 @@
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "EXPO_PUBLIC_API_URL": "https://loginrek.example.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "http://192.168.110.103:3333/api/v1"
       }
     },
     "production": {

@@ -57,6 +57,10 @@ export type User = {
   fullName: string | null;
   email: string;
   initials: string;
+  role?: string | null;
+  department?: string | null;
+  employeeType?: string | null;
+  avatarUrl?: string | null;
 };
 
 export const authApi = {
@@ -67,4 +71,65 @@ export const authApi = {
     }),
   me: () => api<{ data: User }>('/auth/me'),
   logout: () => api<{ message: string }>('/auth/logout', { method: 'POST' }),
+};
+
+
+/* ---- Endpoint attendances ----------------------------------------------- */
+
+export type AttendanceResponse = {
+  id: number;
+  userId: number;
+  date: string;
+  clockInTime: string;
+  status: string;
+  isLate: boolean;
+  photoPath: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distanceMeters: number;
+  officeName: string;
+  isOfflineSync: boolean;
+  createdAt: string;
+};
+
+export const attendanceApi = {
+  getToday: () =>
+    api<{
+      data: {
+        hasAttended: boolean;
+        attendance: AttendanceResponse | null;
+        serverTime: string;
+        today: string;
+      };
+    }>('/attendances/today'),
+
+  checkIn: (payload: {
+    clockInTime: string;
+    isLate?: boolean;
+    photo?: string;
+    latitude?: number;
+    longitude?: number;
+    distanceMeters?: number;
+    officeName?: string;
+    isOfflineSync?: boolean;
+    date?: string;
+  }) =>
+    api<{
+      data: {
+        message: string;
+        attendance: AttendanceResponse;
+      };
+    }>('/attendances/check-in', {
+      method: 'POST',
+      body: payload,
+    }),
+
+  list: (params?: { page?: number; limit?: number; all?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.append('page', String(params.page));
+    if (params?.limit) q.append('limit', String(params.limit));
+    if (params?.all) q.append('all', 'true');
+    const qs = q.toString();
+    return api<{ data: AttendanceResponse[] }>(`/attendances${qs ? `?${qs}` : ''}`);
+  },
 };

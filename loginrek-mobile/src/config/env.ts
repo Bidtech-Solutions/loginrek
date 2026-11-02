@@ -9,21 +9,27 @@ import { Platform } from 'react-native';
  * 2. Deteksi otomatis saat development: pakai IP laptop yang menjalankan Metro
  *    (`npm run dev`), jadi iPhone/Android fisik di Wi-Fi yang sama langsung
  *    bisa mengakses API di laptop tanpa ubah kode.
- * 3. Fallback emulator: Android 10.0.2.2, iOS simulator / web localhost.
+ * 3. Fallback: IP lokal laptop (192.168.110.103) atau Android emulator 10.0.2.2.
  */
 const API_PORT = process.env.EXPO_PUBLIC_API_PORT ?? '3333';
 
 function devApiUrl(): string {
-  // hostUri contoh: "192.168.1.10:8081"
-  const host = Constants.expoConfig?.hostUri?.split(':')[0];
-
-  // Mode --tunnel memberi host *.exp.direct yang tidak meneruskan port 3333.
-  if (host && !host.endsWith('.exp.direct')) {
-    return `http://${host}:${API_PORT}/api/v1`;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname) {
+    return `http://${window.location.hostname}:${API_PORT}/api/v1`;
   }
 
-  const fallback = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-  return `http://${fallback}:${API_PORT}/api/v1`;
+  // hostUri contoh: "192.168.110.103:8081"
+  const rawHost =
+    Constants.expoConfig?.hostUri?.split(':')[0] ??
+    (Constants as Record<string, any>).manifest2?.extra?.expoClient?.hostUri?.split(':')[0] ??
+    '192.168.110.103';
+
+  // Mode --tunnel memberi host *.exp.direct yang tidak meneruskan port 3333.
+  if (rawHost && !rawHost.endsWith('.exp.direct')) {
+    return `http://${rawHost}:${API_PORT}/api/v1`;
+  }
+
+  return `http://192.168.110.103:${API_PORT}/api/v1`;
 }
 
 const explicitUrl = process.env.EXPO_PUBLIC_API_URL?.trim();

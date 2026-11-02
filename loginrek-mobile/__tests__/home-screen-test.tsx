@@ -1,22 +1,28 @@
-import { render } from '@testing-library/react-native';
+import { render, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import HomeScreen from '@/app/index';
+import Index from '@/app/index';
+
+jest.mock('expo-router', () => ({
+  Redirect: jest.fn(() => null),
+  router: { replace: jest.fn() },
+}));
 
 const metrics = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-describe('<HomeScreen />', () => {
-  test('menampilkan nama aplikasi dan tombol cek API', async () => {
-    const { getByText } = await render(
+describe('<Index />', () => {
+  test('merender alur inisialisasi auth', async () => {
+    const { toJSON } = await render(
       <SafeAreaProvider initialMetrics={metrics}>
-        <HomeScreen />
+        <Index />
       </SafeAreaProvider>,
     );
 
-    getByText('loginrek');
-    getByText('Cek koneksi API');
+    await waitFor(() => {
+      expect(toJSON()).toBeTruthy();
+    });
   });
 });

@@ -16,8 +16,18 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
+          animation: 'slide_from_right',
         }}
-      />
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen
+          name="(app)/attendance"
+          options={{
+            animation: 'slide_from_bottom',
+          }}
+        />
+      </Stack>
     </SafeAreaProvider>
   );
 }
