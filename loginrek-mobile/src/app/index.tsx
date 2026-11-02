@@ -4,40 +4,32 @@ import { Redirect } from 'expo-router';
 
 import { setAccessToken } from '@/lib/api';
 import { tokenStorage } from '@/lib/token-storage';
-import { userStore, UserAccount } from '@/lib/user-store';
+import { userStore } from '@/lib/user-store';
 
 export default function Index() {
   const [ready, setReady] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    async function initSession() {
+    async function checkSession() {
       try {
-        const token = (await tokenStorage.get()) || 'token-auto-demo';
-        await tokenStorage.set(token);
-        setAccessToken(token);
-
-        // Pastikan ada user aktif agar langsung bisa dipakai presensi
-        const existingUser = await userStore.getCurrentUser();
-        if (!existingUser || existingUser.email === 'timmy@gmail.com') {
-          const defaultUser: UserAccount = {
-            id: 'usr-10',
-            email: 'wicaksono@loginrek.com',
-            passwords: ['123456'],
-            fullName: 'Wicaksono',
-            role: 'HRD',
-            onTimeCount: 0,
-            lateCount: 0,
-            todayCheckIn: null,
-            history: [],
-          };
-          await userStore.setCurrentUser(defaultUser);
+        const token = await tokenStorage.get();
+        const user = await userStore.getCurrentUser();
+        // Hanya auto-login jika sudah ada sesi token login resmi (bukan token demo otomatis)
+        if (token && user && token !== 'token-auto-demo') {
+          setAccessToken(token);
+          setHasSession(true);
+        } else {
+          setHasSession(false);
         }
+      } catch {
+        setHasSession(false);
       } finally {
         setReady(true);
       }
     }
 
-    initSession();
+    checkSession();
   }, []);
 
   if (!ready) {
@@ -48,8 +40,8 @@ export default function Index() {
     );
   }
 
-  // Langsung masuk ke Beranda tanpa perlu ketik login!
-  return <Redirect href="/home" />;
+  // Jika belum login, arahkan ke Halaman Login!
+  return hasSession ? <Redirect href="/home" /> : <Redirect href="/(auth)/login" />;
 }
 
 const styles = StyleSheet.create({

@@ -122,9 +122,13 @@ export const syncStore = {
           isOfflineSync: true,
         });
         syncedCount++;
-      } catch {
-        // Jika gagal kirim (misal offline kembali / duplikat), evaluasi
-        remaining.push(item);
+      } catch (err: any) {
+        // Jika status 409 (sudah tercatat di server), anggap berhasil dan buang dari antrean
+        if (err?.status === 409) {
+          syncedCount++;
+        } else {
+          remaining.push(item);
+        }
       }
     }
 

@@ -132,8 +132,17 @@ export default function HomeScreen() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [currentTime, setCurrentTime] = useState(() => formatTime24(new Date()));
   const [todayCheckIn, setTodayCheckIn] = useState<{ time: string; isLate: boolean } | null>(null);
-  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  // Background Auto-Sync: sinkronkan secara otomatis dan senyap di latar belakang
+  const triggerAutoSync = useCallback(async () => {
+    try {
+      const online = await syncStore.isOnline();
+      if (!online) return;
+      const count = await syncStore.getPendingCount();
+      if (count > 0) {
+        await syncStore.syncPending();
+      }
+    } catch {}
+  }, []);
 
   // Ambil profil user dan status check-in terbaru setiap kali layar beranda aktif (fokus)
   useFocusEffect(
@@ -144,21 +153,27 @@ export default function HomeScreen() {
           setCurrentUser(u);
           setTodayCheckIn(u.todayCheckIn ?? null);
         }
-
-        const count = await syncStore.getPendingCount();
-        setPendingSyncCount(count);
-
-        // Jika ada data antrean dan perangkat online, otomatis sinkronkan ke server
-        const online = await syncStore.isOnline();
-        if (online && count > 0) {
-          await syncStore.syncPending();
-          const remaining = await syncStore.getPendingCount();
-          setPendingSyncCount(remaining);
-        }
+        await triggerAutoSync();
       }
       refreshUser();
-    }, [])
+    }, [triggerAutoSync])
   );
+
+  // Pantau jaringan: jika ada internet (Wi-Fi / kuota data), otomatis sync tanpa perlu tombol
+  useEffect(() => {
+    triggerAutoSync();
+    const unsubscribe = syncStore.subscribeNetworkState((online) => {
+      if (online) {
+        triggerAutoSync();
+      }
+    });
+
+    const interval = setInterval(triggerAutoSync, 15000);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [triggerAutoSync]);
 
   // Jam digital realtime (24 jam) yang berdetak tiap detik
   useEffect(() => {
@@ -213,28 +228,6 @@ export default function HomeScreen() {
       return;
     }
     router.push('/(app)/attendance');
-  }
-
-  // Sinkronkan presensi offline secara manual
-  async function handleManualSync() {
-    setIsSyncing(true);
-    try {
-      const res = await syncStore.syncPending();
-      setPendingSyncCount(res.remainingCount);
-      if (res.syncedCount > 0) {
-        Alert.alert(
-          'Sinkronisasi Sukses ✅',
-          `${res.syncedCount} data presensi offline berhasil dikirim ke server.`
-        );
-      } else {
-        Alert.alert(
-          'Perangkat Masih Offline',
-          'Pastikan perangkat kamu telah terhubung ke internet (Paket Data atau Wi-Fi) untuk mengirim presensi ke server.'
-        );
-      }
-    } finally {
-      setIsSyncing(false);
-    }
   }
 
   return (
@@ -299,39 +292,6 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-
-        {/* Banner Antrean Presensi Offline (Jika ada data tersimpan di HP belum ke server) */}
-        {pendingSyncCount > 0 && (
-          <View style={styles.syncBannerCard}>
-            <View style={styles.syncBannerLeft}>
-              <View style={styles.syncIconBox}>
-                <Feather name="cloud-off" size={16} color="#D97706" />
-              </View>
-              <View style={styles.syncTextColumn}>
-                <Text style={styles.syncBannerTitle}>Presensi Offline Tersimpan</Text>
-                <Text style={styles.syncBannerSubtitle}>
-                  {pendingSyncCount} data absensi menunggu sinkronisasi internet
-                </Text>
-              </View>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Sinkronkan Presensi"
-              onPress={handleManualSync}
-              disabled={isSyncing}
-              style={({ pressed }) => [
-                styles.syncButton,
-                pressed && styles.syncButtonPressed,
-              ]}
-            >
-              {isSyncing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.syncButtonText}>Sync</Text>
-              )}
-            </Pressable>
-          </View>
-        )}
 
         {/* Section Rekap Bulan Ini */}
         <View style={styles.rekapSection}>
