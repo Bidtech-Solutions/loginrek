@@ -26,7 +26,6 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -55,7 +54,11 @@
         "expo-build-properties",
         {
           "android": {
-            "buildArchs": ["arm64-v8a", "armeabi-v7a"],
+            "usesCleartextTraffic": true,
+            "buildArchs": [
+              "arm64-v8a",
+              "armeabi-v7a"
+            ],
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "useLegacyPackaging": true
@@ -73,8 +76,9 @@
         }
       },
       "eas": {
-        "projectId": "09453540-1166-4260-a949-8eb417e8e778"
+        "projectId": "da2c26bc-bc7b-447e-a50e-160af56919a7"
       }
-    }
+    },
+    "owner": "achul.id"
   }
 }

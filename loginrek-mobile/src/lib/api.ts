@@ -15,10 +15,16 @@ export class ApiError extends Error {
 }
 
 let accessToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 /** Set/clear token Bearer di memori. Persistensi: lihat src/lib/token-storage.ts. */
 export function setAccessToken(token: string | null) {
   accessToken = token;
+}
+
+/** Dipanggil saat server menolak token yang sedang dipakai (401): kedaluwarsa / dicabut. */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
 }
 
 export async function api<T>(
@@ -42,6 +48,7 @@ export async function api<T>(
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 401 && accessToken) unauthorizedHandler?.();
       const errMsg = json.message || (Array.isArray(json.errors) && json.errors[0]?.message) || res.statusText || ('HTTP ' + res.status);
       throw new ApiError(res.status, [{ message: errMsg }]);
     }
@@ -72,7 +79,7 @@ export const authApi = {
     }),
   me: () => api<{ data: User }>('/auth/me'),
   logout: () => api<{ message: string }>('/auth/logout', { method: 'POST' }),
-  updateProfile: (payload: { email: string; currentPassword?: string; newPassword?: string; fullName?: string; avatarUrl?: string }) =>
+  updateProfile: (payload: { currentPassword?: string; newPassword?: string; fullName?: string; avatarUrl?: string }) =>
     api<{ success: boolean; message: string; user?: any }>('/auth/profile', {
       method: 'PUT',
       body: payload,

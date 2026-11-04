@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import AddEmployeePage from './AddEmployeePage';
 import EditEmployeePage from './EditEmployeePage';
 import { 
@@ -18,9 +19,17 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 export default function EmployeesPage({ employeesData, setEmployeesData }) {
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'add'
+  // Rute: /employees (daftar), /employees/new (tambah), /employees/:id/edit (ubah)
+  const navigate = useNavigate();
+  const { '*': subPath = '' } = useParams();
+  const editMatch = subPath.match(/^([^/]+)\/edit$/);
+  const viewMode = subPath === 'new' ? 'add' : editMatch ? 'edit' : 'list';
+  const editingEmployee = editMatch
+    ? employeesData.find((e) => String(e.id) === editMatch[1]) ?? null
+    : null;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('Semua');
   
@@ -30,7 +39,6 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState(null);
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -43,7 +51,7 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
 
     try {
       const emailQuery = employeeToDelete.email ? `?email=${encodeURIComponent(employeeToDelete.email)}` : '';
-      const res = await fetch(`http://localhost:3333/api/v1/employees/${employeeToDelete.id}${emailQuery}`, {
+      const res = await apiFetch(`/employees/${employeeToDelete.id}${emailQuery}`, {
         method: 'DELETE',
       });
       const json = await res.json().catch(() => ({}));
@@ -138,15 +146,7 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
 
   // Open Edit Page
   const handleOpenEdit = (emp) => {
-    setEditingEmployee(emp);
-    setViewMode('edit');
-  };
-
-  // Save Edit
-  const handleSaveEdit = (e) => {
-    e.preventDefault();
-    setEmployeesData(prev => prev.map(emp => emp.id === editingEmployee.id ? { ...formData } : emp));
-    setEditingEmployee(null);
+    navigate(`/employees/${emp.id}/edit`);
   };
 
   // Handle Add Employee
@@ -185,31 +185,33 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
     }
   };
 
+  if (subPath !== '' && viewMode === 'list') {
+    return <Navigate to="/employees" replace />;
+  }
+
   if (viewMode === 'add') {
     return (
       <AddEmployeePage 
-        onBack={() => setViewMode('list')}
+        onBack={() => navigate('/employees')}
         onSave={(newEmp) => {
           setEmployeesData(prev => [newEmp, ...prev]);
-          setViewMode('list');
+          navigate('/employees');
         }}
       />
     );
   }
 
-  if (viewMode === 'edit' && editingEmployee) {
+  if (viewMode === 'edit') {
+    if (!editingEmployee) return <Navigate to="/employees" replace />;
     return (
       <EditEmployeePage 
         employee={editingEmployee}
-        onBack={() => {
-          setViewMode('list');
-          setEditingEmployee(null);
-        }}
+        onBack={() => navigate('/employees')}
         onSave={async (updatedEmp) => {
+          let res;
           try {
-            const res = await fetch(`http://localhost:3333/api/v1/employees/${updatedEmp.id}`, {
+            res = await apiFetch(`/employees/${updatedEmp.id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 fullName: updatedEmp.name,
                 role: updatedEmp.role,
@@ -219,21 +221,20 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
                 password: updatedEmp.password,
               }),
             });
-            const json = await res.json().catch(() => ({}));
-            if (res.ok && json.employee) {
-              setEmployeesData(prev => prev.map(e => e.id === updatedEmp.id ? { ...e, ...json.employee } : e));
-            } else {
-              setEmployeesData(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
-            }
           } catch {
-            setEmployeesData(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+            throw new Error('Server tidak dapat dihubungi. Perubahan belum disimpan.');
           }
-          setViewMode('list');
-          setEditingEmployee(null);
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(json.message || 'Gagal menyimpan perubahan.');
+          }
+          if (json.employee) {
+            setEmployeesData(prev => prev.map(e => e.id === updatedEmp.id ? { ...e, ...json.employee } : e));
+          }
+          navigate('/employees');
         }}
         onDelete={(emp) => {
-          setViewMode('list');
-          setEditingEmployee(null);
+          navigate('/employees');
           setEmployeeToDelete(emp);
         }}
       />
@@ -320,7 +321,7 @@ export default function EmployeesPage({ employeesData, setEmployeesData }) {
         <button 
           id="btn-add-employee"
           className="btn-primary-teal"
-          onClick={() => setViewMode('add')}
+          onClick={() => navigate('/employees/new')}
         >
           <Plus size={18} />
           <span>Tambah Karyawan</span>

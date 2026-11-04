@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+tmp/
+*.sqlite
+*.sqlite3
+*.db
+*.exe
+**/*_test.go
+public/uploads/attendances/*
+public/uploads/avatars/*
+Dockerfile
+.dockerignore

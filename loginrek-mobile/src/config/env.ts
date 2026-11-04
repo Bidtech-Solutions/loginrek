@@ -2,10 +2,10 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /**
- * Base URL REST API (AdonisJS, prefix /api/v1).
+ * Base URL REST API (Go, prefix /api/v1).
  *
  * Urutan prioritas:
- * 1. EXPO_PUBLIC_API_URL  — di-set lewat .env.local (dev) atau eas.json (build).
+ * 1. EXPO_PUBLIC_API_URL  — di-set lewat .env di root repo (dev) atau eas.json (build).
  * 2. Deteksi otomatis saat development: pakai IP laptop yang menjalankan Metro
  *    (`npm run dev`), jadi iPhone/Android fisik di Wi-Fi yang sama langsung
  *    bisa mengakses API di laptop tanpa ubah kode.

@@ -108,40 +108,19 @@ export default function ProfileScreen() {
       return;
     }
 
-    // 1. Coba perbarui ke REST API backend (AdonisJS / SQLite)
-    let backendUpdated = false;
-    if (currentUser?.email) {
-      try {
-        await authApi.updateProfile({
-          email: currentUser.email,
-          currentPassword: currentPassword.trim(),
-          newPassword: newPassword.trim(),
-        });
-        backendUpdated = true;
-      } catch (apiErr: any) {
-        if (apiErr instanceof ApiError || apiErr?.status === 400 || apiErr?.status === 401) {
-          Alert.alert('Gagal', apiErr.message || 'Password saat ini yang Anda masukkan salah.');
-          return;
-        }
+    // Ganti kata sandi diverifikasi server (wajib online); tidak ada penyimpanan kata sandi di HP.
+    try {
+      await authApi.updateProfile({
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+      });
+    } catch (apiErr: any) {
+      if (apiErr instanceof ApiError) {
+        Alert.alert('Gagal', apiErr.message || 'Password saat ini yang Anda masukkan salah.');
+      } else {
+        Alert.alert('Tidak ada koneksi', 'Ganti kata sandi membutuhkan koneksi internet. Coba lagi saat online.');
       }
-    }
-
-    // 2. Fallback verifikasi lokal jika offline
-    if (!backendUpdated) {
-      if (currentUser && !currentUser.passwords.includes(currentPassword.trim())) {
-        Alert.alert('Gagal', 'Password saat ini yang Anda masukkan salah.');
-        return;
-      }
-    }
-
-    // 3. Simpan kata sandi baru ke sesi lokal
-    if (currentUser) {
-      const updatedUser: UserAccount = {
-        ...currentUser,
-        passwords: [newPassword.trim(), ...currentUser.passwords],
-      };
-      await userStore.setCurrentUser(updatedUser);
-      setCurrentUser(updatedUser);
+      return;
     }
 
     setCurrentPassword('');
@@ -184,12 +163,11 @@ export default function ProfileScreen() {
           setCurrentUser(updated);
         }
 
-        // 2. Unggah otomatis ke server backend (AdonisJS / SQLite)
+        // 2. Unggah otomatis ke server backend (Go / SQLite)
         let syncedToServer = false;
         if (currentUser?.email) {
           try {
             const apiRes = await authApi.updateProfile({
-              email: currentUser.email,
               avatarUrl: base64Data,
             });
             if (apiRes?.user?.avatarUrl) {

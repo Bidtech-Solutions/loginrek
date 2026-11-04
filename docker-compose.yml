@@ -1,75 +1,37 @@
 # =============================================================================
-# loginrek — Docker Compose
+# loginrek — DEVELOPMENT LOKAL
 #
-# PRODUCTION (VPS)  : semua service, image dashboard ditarik dari GHCR.
-#                     File ini + .env.example dikirim ke VPS oleh GitHub Actions.
-# DEVELOPMENT LOKAL : jalankan infra saja, dashboard dijalankan via `npm run dev`
-#                       docker compose up -d postgres rustfs
+#   docker compose up -d --build            # semuanya: PostgreSQL + RustFS + backend + dashboard
+#   docker compose up -d postgres rustfs    # hanya infra (backend/dashboard lewat go run / npm run dev)
 #
-# Semua variabel dibaca dari .env di folder yang sama (lihat .env.example).
-# Port hanya di-bind ke 127.0.0.1 — akses publik lewat Nginx di host.
+#   Backend   : http://localhost:3333   (juga http://<IP-PC>:3333 untuk HP di Wi-Fi yang sama)
+#   Dashboard : http://localhost:5173
+#
+# Nilai dibaca dari .env di root (lihat .env.example). Aplikasi mobile tidak ada di sini:
+# jalankan dengan `npm run dev` (Expo Go) atau bangun APK dengan EAS (lihat README).
+# Production: lihat docker-compose.prod.yml.
 # =============================================================================
 
-name: loginrek
-
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
+name: loginrek-dev
 
 services:
-  # ---------------------------------------------------------------------------
-  # API + Dashboard (AdonisJS + Inertia + React)
-  # ---------------------------------------------------------------------------
-  dashboard:
-    image: ghcr.io/${GHCR_OWNER:-change-me}/loginrek-dashboard:${IMAGE_TAG:-latest}
-    container_name: loginrek-dashboard
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 3333
-      # Alamat internal jaringan Docker (override nilai di .env)
-      DB_HOST: postgres
-      DB_PORT: 5432
-      S3_ENDPOINT: http://rustfs:9000
-    ports:
-      - "127.0.0.1:${DASHBOARD_HOST_PORT:-3050}:3333"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rustfs:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3333/health >/dev/null || exit 1"]
-      interval: 30s
-      timeout: 5s
-      start_period: 20s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    logging: *default-logging
-    networks:
-      - loginrek
+  # RustFS berjalan sebagai uid 10001; volume baru dimiliki root, jadi hak akses disetel dulu.
+  rustfs-perms:
+    image: alpine:3.22
+    user: root
+    command: [ "sh", "-c", "chown -R 10001:10001 /data" ]
+    volumes:
+      - rustfs_data:/data
+    restart: "no"
 
-  # ---------------------------------------------------------------------------
-  # PostgreSQL
-  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:17-alpine
-    container_name: loginrek-postgres
+    container_name: loginrek-dev-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-loginrek}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-loginrek}
-      POSTGRES_DB: ${DB_DATABASE:-loginrek}
-      TZ: ${TZ:-UTC}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-loginrek_db}
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
@@ -79,25 +41,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    logging: *default-logging
-    networks:
-      - loginrek
 
-  # ---------------------------------------------------------------------------
-  # RustFS (object storage S3-compatible)
-  # Console (port 9001) hanya untuk admin — akses via SSH tunnel.
-  # ---------------------------------------------------------------------------
   rustfs:
-    image: rustfs/rustfs:1.0.3
-    container_name: loginrek-rustfs
+    image: rustfs/rustfs:1.0.4
+    container_name: loginrek-dev-rustfs
     restart: unless-stopped
+    depends_on:
+      rustfs-perms: { condition: service_completed_successfully }
     environment:
-      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-loginrek}
-      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-loginrek-secret}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin123}
+      RUSTFS_VOLUMES: /data
       RUSTFS_ADDRESS: ":9000"
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CONSOLE_ADDRESS: ":9001"
@@ -106,27 +60,60 @@ services:
       - "127.0.0.1:${RUSTFS_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - rustfs_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      start_period: 10s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    logging: *default-logging
-    networks:
-      - loginrek
 
-networks:
-  loginrek:
-    name: loginrek
+  backend:
+    build: ./loginrek-backend
+    container_name: loginrek-dev-backend
+    restart: unless-stopped
+    environment:
+      PORT: 3333
+      APP_ENV: development                 # development: akun karyawan uji ikut di-seed
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-loginrek_db}
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:-}          # wajib >= 32 karakter; kosong/CHANGE_ME = backend berhenti
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      RUSTFS_ENDPOINT: rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin123}
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-loginrek-media}
+      RUSTFS_USE_SSL: "false"
+      RUSTFS_PUBLIC_URL: ""                # foto disajikan backend lewat /uploads/*
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_EMPLOYEE_EMAIL: ${SEED_EMPLOYEE_EMAIL:-}
+      SEED_EMPLOYEE_PASSWORD: ${SEED_EMPLOYEE_PASSWORD:-}
+      IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-1280}
+      IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-720}
+      IMAGE_WEBP_QUALITY: ${IMAGE_WEBP_QUALITY:-80}
+    ports:
+      - "3333:3333"                        # semua interface: HP di Wi-Fi yang sama bisa mengakses
+    volumes:
+      - uploads_data:/app/public/uploads
+    depends_on:
+      postgres: { condition: service_healthy }
+      rustfs: { condition: service_started }
 
-# Nama volume dikunci agar data tidak "hilang" bila nama folder/project berubah.
+  dashboard:
+    build:
+      context: ./loginrek-dashboard
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3333}   # dibakar ke bundle saat build
+    container_name: loginrek-dev-dashboard
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
 volumes:
+  uploads_data:
+    name: loginrek_dev_uploads_data
   pg_data:
-    name: loginrek_pg_data
+    name: loginrek_dev_pg_data
   rustfs_data:
-    name: loginrek_rustfs_data
+    name: loginrek_dev_rustfs_data

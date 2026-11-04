@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
+import DashboardLayout from './components/DashboardLayout';
 import LoginPage from './components/LoginPage';
 import AttendancePage from './components/AttendancePage';
 import EmployeesPage from './components/EmployeesPage';
@@ -9,11 +10,13 @@ import {
   initialAttendanceRecords, 
   initialEmployeesData 
 } from './data/mockData';
-import { Menu, LogIn } from 'lucide-react';
+import { API_ORIGIN } from './config';
+import { apiFetch, clearSession, AUTH_EXPIRED_EVENT } from './lib/api';
 
-const API_BASE = 'http://localhost:3333/api/v1';
 
 export default function App() {
+  const location = useLocation();
+
   const loadAdminData = () => {
     try {
       const user = localStorage.getItem('admin_user');
@@ -28,7 +31,7 @@ export default function App() {
           avatar: rawAvatar
             ? (rawAvatar.startsWith('http') || rawAvatar.startsWith('data:')
                 ? rawAvatar
-                : `http://localhost:3333${rawAvatar}`)
+                : `${API_ORIGIN}${rawAvatar}`)
             : '',
         };
       }
@@ -60,17 +63,17 @@ export default function App() {
     return initialAttendanceRecords;
   };
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem('admin_token')));
-  const [currentTab, setCurrentTab] = useState('attendance'); // 'attendance', 'employees', 'settings'
+  // Sesi baru dianggap sah setelah token diverifikasi ke server (GET /auth/me) dan akunnya HR/admin.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(() => !localStorage.getItem('admin_token'));
   const [adminData, setAdminData] = useState(() => loadAdminData());
   const [attendanceData, setAttendanceData] = useState(() => loadSavedAttendances());
   const [employeesData, setEmployeesData] = useState(() => loadSavedEmployees());
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // Ambil data karyawan dari database backend Go
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(`${API_BASE}/employees`);
+      const res = await apiFetch('/employees');
       const json = await res.json();
       const list = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
       if (Array.isArray(list)) {
@@ -81,7 +84,7 @@ export default function App() {
             ? (emp.avatar.startsWith('http') || emp.avatar.startsWith('data:')
                 ? emp.avatar
                 : emp.avatar.startsWith('/uploads')
-                ? `http://localhost:3333${emp.avatar}`
+                ? `${API_ORIGIN}${emp.avatar}`
                 : emp.avatar)
             : '',
         }));
@@ -98,7 +101,7 @@ export default function App() {
   // Ambil log presensi realtime dari database backend Go
   const fetchAttendances = async () => {
     try {
-      const res = await fetch(`${API_BASE}/attendances?all=true`);
+      const res = await apiFetch('/attendances?all=true');
       const json = await res.json();
       const list = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
       if (Array.isArray(list)) {
@@ -120,7 +123,7 @@ export default function App() {
             ? (rawAvatar.startsWith('http') || rawAvatar.startsWith('data:')
                 ? rawAvatar
                 : rawAvatar.startsWith('/uploads')
-                ? `http://localhost:3333${rawAvatar}`
+                ? `${API_ORIGIN}${rawAvatar}`
                 : rawAvatar)
             : undefined;
 
@@ -142,7 +145,7 @@ export default function App() {
               ? item.photoPath.startsWith('http') || item.photoPath.startsWith('data:')
                 ? item.photoPath
                 : item.photoPath.startsWith('/uploads')
-                ? `http://localhost:3333${item.photoPath}`
+                ? `${API_ORIGIN}${item.photoPath}`
                 : item.photoPath
               : null,
             distance: item.distanceMeters !== undefined ? `${item.distanceMeters}m` : '0m',
@@ -158,7 +161,42 @@ export default function App() {
     }
   };
 
+  // Verifikasi token yang tersimpan saat halaman dibuka
   useEffect(() => {
+    if (authChecked) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch('/auth/me');
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && json?.data?.isAdmin) {
+          setIsAuthenticated(true);
+        } else {
+          clearSession();
+        }
+      } catch {
+        // Server tidak terjangkau: sesi belum bisa diverifikasi, minta login ulang
+      } finally {
+        if (!cancelled) setAuthChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authChecked]);
+
+  // Server menolak token (kedaluwarsa / bukan admin): kembali ke login
+  useEffect(() => {
+    const onExpired = () => {
+      setAdminData(initialAdminData);
+      setIsAuthenticated(false);
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     fetchEmployees();
     fetchAttendances();
 
@@ -169,74 +207,65 @@ export default function App() {
     }, 3000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [isAuthenticated]);
 
-  // If not logged in, render the login page
-  if (!isAuthenticated) {
-    return (
-      <LoginPage 
-        onLoginSuccess={() => {
-          setIsAuthenticated(true);
-          setAdminData(loadAdminData());
-          setCurrentTab('attendance');
-          fetchEmployees();
-          fetchAttendances();
-        }} 
-      />
-    );
-  }
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    setAdminData(loadAdminData());
+  };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_user');
-    localStorage.removeItem('admin_profile');
+    clearSession();
     setAdminData(initialAdminData);
     setIsAuthenticated(false);
   };
 
+  if (!authChecked) {
+    return <div style={{ padding: 32, color: '#475569' }}>Memeriksa sesi…</div>;
+  }
+
   return (
-    <div className="dashboard-layout">
-      {/* Sidebar Navigation */}
-      <Sidebar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
-        adminData={adminData}
-        onLogout={handleLogout}
-        isMobileOpen={isMobileOpen}
-        setIsMobileOpen={setIsMobileOpen}
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          isAuthenticated
+            ? <Navigate to={location.state?.from?.pathname ?? '/attendance'} replace />
+            : <LoginPage onLoginSuccess={handleLoginSuccess} />
+        }
       />
 
-      {/* Main Content Area */}
-      <div className="main-content-wrapper">
-        {/* Mobile Header Bar */}
-        <header className="mobile-top-bar">
-          <button 
-            className="mobile-hamburger-btn"
-            onClick={() => setIsMobileOpen(true)}
-            aria-label="Buka menu navigasi"
-          >
-            <Menu size={22} />
-          </button>
-          <div className="mobile-brand-title">Login Rek</div>
-          <button 
-            className="mobile-quick-switch"
-            onClick={() => setIsAuthenticated(false)}
-            title="Ke Halaman Login"
-          >
-            <LogIn size={18} />
-          </button>
-        </header>
+      {/* Rute terproteksi: wajib login */}
+      <Route
+        element={
+          isAuthenticated
+            ? (
+              <DashboardLayout
+                adminData={adminData}
+                onLogout={handleLogout}
+                onGoToLogin={() => setIsAuthenticated(false)}
+              />
+            )
+            : <Navigate to="/login" replace state={{ from: location }} />
+        }
+      >
+        <Route index element={<Navigate to="/attendance" replace />} />
 
-        {/* Dynamic Main Body Content */}
-        <main className="dashboard-main-body">
-          {currentTab === 'attendance' && (
+        {/* /attendance dan /attendance/:recordId memakai satu elemen agar filter tanggal tetap terjaga */}
+        <Route
+          path="attendance/:recordId?"
+          element={
             <AttendancePage 
               attendanceData={attendanceData} 
               employeesData={employeesData}
             />
-          )}
+          }
+        />
 
-          {currentTab === 'employees' && (
+        {/* /employees, /employees/new, /employees/:id/edit */}
+        <Route
+          path="employees/*"
+          element={
             <EmployeesPage 
               employeesData={employeesData} 
               setEmployeesData={(updatedOrFn) => {
@@ -251,16 +280,21 @@ export default function App() {
                 fetchEmployees();
               }}
             />
-          )}
+          }
+        />
 
-          {currentTab === 'settings' && (
+        <Route
+          path="settings"
+          element={
             <SettingsPage 
               adminData={adminData} 
               setAdminData={setAdminData} 
             />
-          )}
-        </main>
-      </div>
-    </div>
+          }
+        />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/attendance" replace />} />
+    </Routes>
   );
 }

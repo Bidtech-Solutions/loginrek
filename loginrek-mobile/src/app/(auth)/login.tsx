@@ -41,63 +41,41 @@ export default function LoginScreen() {
     setIsLoading(true);
 
     try {
-      // 1. Coba login ke API backend REST (AdonisJS)
-      try {
-        const res = await authApi.login(identifier.trim(), password);
-        const token = res.data.token;
-        const apiUser = res.data.user;
+      // Kata sandi hanya diverifikasi server. Tidak ada login lokal/offline: sesi berikutnya
+      // memakai JWT yang tersimpan (lihat app/index.tsx), jadi login hanya perlu online sekali.
+      setAccessToken(null);
+      const res = await authApi.login(identifier.trim(), password);
+      const token = res.data.token;
+      const apiUser = res.data.user;
 
-        await tokenStorage.set(token);
-        setAccessToken(token);
+      await tokenStorage.set(token);
+      setAccessToken(token);
 
-        // Simpan sesi user aktif agar terbaca di Home dan Profile screen
-        const userAccount: UserAccount = {
-          id: `usr-${apiUser.id}`,
-          email: apiUser.email,
-          passwords: [password],
-          fullName: apiUser.fullName ?? 'Karyawan',
-          role: apiUser.role ?? 'Karyawan',
-          onTimeCount: 0,
-          lateCount: 0,
-          todayCheckIn: null,
-          history: [],
-          avatarUrl: apiUser.avatarUrl ?? undefined,
-        };
-        await userStore.setCurrentUser(userAccount);
+      // Cache profil user aktif agar terbaca di Home dan Profile screen
+      const userAccount: UserAccount = {
+        id: `usr-${apiUser.id}`,
+        email: apiUser.email,
+        fullName: apiUser.fullName ?? 'Karyawan',
+        role: apiUser.role ?? 'Karyawan',
+        onTimeCount: 0,
+        lateCount: 0,
+        todayCheckIn: null,
+        history: [],
+        avatarUrl: apiUser.avatarUrl ?? undefined,
+      };
+      await userStore.setCurrentUser(userAccount);
 
-        router.replace('/(app)/home');
-        return;
-      } catch (apiErr: any) {
-        // Jika server aktif dan menolak kredensial
-        if (apiErr instanceof ApiError) {
-          const serverMsg = apiErr.errors?.[0]?.message;
-          if (apiErr.status === 404 || serverMsg === 'Akun tidak tersedia') {
-            setErrorMessage('Akun tidak tersedia');
-            return;
-          }
-          if (apiErr.status === 400 || apiErr.status === 401) {
-            setErrorMessage(serverMsg || 'Kata sandi salah. Silakan periksa kembali.');
-            return;
-          }
-        }
-        // Jika offline atau server belum aktif, lanjut ke pengecekan akun lokal
+      router.replace('/(app)/home');
+    } catch (err: any) {
+      if (err instanceof ApiError) {
+        setErrorMessage(
+          err.status === 400 || err.status === 401
+            ? err.errors?.[0]?.message || 'Email atau kata sandi salah.'
+            : 'Terjadi kesalahan pada server. Coba lagi beberapa saat.',
+        );
+      } else {
+        setErrorMessage('Tidak dapat terhubung ke server. Login pertama wajib online.');
       }
-
-      // 2. Fallback: Autentikasi akun lokal offline
-      const authResult = await userStore.authenticate(identifier, password);
-      if (authResult.success) {
-        const token = `token-${authResult.user.id}`;
-        await tokenStorage.set(token);
-        setAccessToken(token);
-        router.replace('/(app)/home');
-        return;
-      } else if (authResult.error) {
-        setErrorMessage(authResult.error);
-        return;
-      }
-
-      // 3. Default jika akun tidak terdaftar di sistem
-      setErrorMessage('Akun tidak tersedia');
     } finally {
       setIsLoading(false);
     }

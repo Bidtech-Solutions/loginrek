@@ -50,7 +50,7 @@ export default function EditEmployeePage({ employee, onBack, onSave, onDelete })
     setAvatarPreview('');
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
       setErrorMsg('Nama Lengkap tidak boleh kosong.');
@@ -79,7 +79,11 @@ export default function EditEmployeePage({ employee, onBack, onSave, onDelete })
       ...(password.trim() ? { password: password.trim() } : {})
     };
 
-    onSave(updatedEmployee);
+    try {
+      await onSave(updatedEmployee);
+    } catch (err) {
+      setErrorMsg(err?.message || 'Gagal menyimpan perubahan.');
+    }
   };
 
   return (

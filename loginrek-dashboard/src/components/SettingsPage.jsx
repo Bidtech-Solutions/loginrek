@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getInitials } from '../data/mockData';
+import { apiFetch } from '../lib/api';
 
 export default function SettingsPage({ adminData, setAdminData }) {
   const [name, setName] = useState(adminData?.name || 'Admin Piposmart');
@@ -131,11 +132,9 @@ export default function SettingsPage({ adminData, setAdminData }) {
         try { localStorage.setItem('admin_profile', JSON.stringify(updated)); } catch {}
         return updated;
       });
-      fetch('http://localhost:3333/api/v1/auth/profile', {
+      apiFetch('/auth/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email || adminData?.email,
           fullName: name,
           avatarUrl: '',
         })
@@ -159,11 +158,6 @@ export default function SettingsPage({ adminData, setAdminData }) {
         alert('Silakan masukkan kata sandi saat ini untuk memverifikasi perubahan kata sandi!');
         return;
       }
-      const activeCurrentPw = localStorage.getItem('admin_password') || 'password123';
-      if (currentPassword !== activeCurrentPw) {
-        alert('Kata sandi saat ini salah!');
-        return;
-      }
       if (newPassword === currentPassword) {
         alert('Kata sandi baru tidak boleh sama dengan kata sandi saat ini!');
         return;
@@ -178,30 +172,31 @@ export default function SettingsPage({ adminData, setAdminData }) {
       }
     }
 
-    const updatedProfile = { ...adminData, name, email };
+    // Simpan ke server dulu; kata sandi saat ini diverifikasi oleh server.
     try {
-      localStorage.setItem('admin_profile', JSON.stringify(updatedProfile));
-      if (newPassword) {
-        localStorage.setItem('admin_password', newPassword);
-      }
-    } catch {}
-    setAdminData(updatedProfile);
-
-    // Kirim sinkronisasi ke backend jika server aktif
-    try {
-      await fetch('http://localhost:3333/api/v1/auth/profile', {
+      const res = await apiFetch('/auth/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email || adminData.email,
           fullName: name,
           currentPassword: currentPassword || undefined,
           newPassword: newPassword || undefined,
         })
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(json.message || 'Gagal menyimpan perubahan.');
+        return;
+      }
     } catch {
-      // Backend offline: perubahan tetap tersimpan di browser
+      alert('Server tidak dapat dihubungi. Perubahan belum disimpan.');
+      return;
     }
+
+    const updatedProfile = { ...adminData, name };
+    try {
+      localStorage.setItem('admin_profile', JSON.stringify(updatedProfile));
+    } catch {}
+    setAdminData(updatedProfile);
 
     if (newPassword) {
       setCurrentPassword('');
@@ -262,8 +257,8 @@ export default function SettingsPage({ adminData, setAdminData }) {
                   type="email"
                   className="form-control"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  readOnly
+                  title="Email adalah identitas login dan tidak dapat diubah dari sini"
                 />
               </div>
             </div>

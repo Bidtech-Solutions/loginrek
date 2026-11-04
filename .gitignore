@@ -7,6 +7,7 @@
 .env.*
 .env.local
 .env*.local
+*.local
 !.env.example
 
 # --- Dependencies ---
@@ -25,6 +26,7 @@ web-build/
 *.exe
 *.exe~
 *.dll
+/loginrek-backend/api
 *.so
 *.dylib
 .gocache/
@@ -50,8 +52,9 @@ tmp/
 .expo/
 *.apk
 *.aab
-/ios/
-/android/
+loginrek-mobile/ios/
+loginrek-mobile/android/
+loginrek-mobile/expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
@@ -60,6 +63,7 @@ tmp/
 *.key
 *.mobileprovision
 .metro-health-check*
+*.pem
 
 # --- Temporary & Backup Files ---
 *.tmp

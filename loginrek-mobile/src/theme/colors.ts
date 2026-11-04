@@ -1,6 +1,6 @@
 /**
  * Token warna brand loginrek — biru kehijauan (teal).
- * Sumber kebenaran: docs/DESIGN.md. Samakan dengan dashboard (inertia/css/app.css).
+ * Sumber kebenaran: docs/DESIGN.md (di root repo). Samakan dengan dashboard (src/index.css).
  */
 export const colors = {
   primary: '#0E7C86',

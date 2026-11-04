@@ -11,6 +11,7 @@ import {
   MapPinOff,
   ShieldCheck
 } from 'lucide-react';
+import { API_ORIGIN } from '../config';
 
 // Helper to parse time string like "08.08" or "08:08" to minutes from midnight
 function parseTimeToMinutes(timeStr) {
@@ -92,7 +93,7 @@ export default function AttendanceDetailPage({ record, onBack }) {
     ? (rawAvatar.startsWith('http') || rawAvatar.startsWith('data:')
         ? rawAvatar
         : rawAvatar.startsWith('/uploads')
-        ? `http://localhost:3333${rawAvatar}`
+        ? `${API_ORIGIN}${rawAvatar}`
         : rawAvatar)
     : '/avatars/default_avatar.png';
 

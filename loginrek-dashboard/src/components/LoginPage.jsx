@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
+import { API_BASE } from '../config';
 
 export default function LoginPage({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -29,8 +30,7 @@ export default function LoginPage({ onLoginSuccess }) {
     setErrorMsg('');
 
     try {
-      // 1. Verifikasi kredensial asli ke REST API Backend (AdonisJS)
-      const response = await fetch('http://localhost:3333/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,51 +46,26 @@ export default function LoginPage({ onLoginSuccess }) {
       const json = await response.json().catch(() => ({}));
 
       if (response.ok && json?.data?.token) {
-        localStorage.setItem('admin_token', json.data.token);
-        if (json.data.user) {
-          localStorage.setItem('admin_user', JSON.stringify(json.data.user));
+        // Dashboard hanya untuk HR/admin; akun karyawan biasa hanya boleh memakai mobile.
+        if (!json.data.user?.isAdmin) {
+          setErrorMsg('Akun ini tidak memiliki akses ke dashboard.');
+          return;
         }
-        setIsLoading(false);
+        localStorage.setItem('admin_token', json.data.token);
+        localStorage.setItem('admin_user', JSON.stringify(json.data.user));
         onLoginSuccess();
         return;
       }
 
-      // Jika server menolak (email tidak terdaftar atau password salah)
-      if (response.status === 400 || response.status === 401) {
-        setIsLoading(false);
-        setErrorMsg('Email atau password admin salah.');
-        return;
+      if (response.status >= 500) {
+        setErrorMsg('Terjadi kesalahan pada server. Coba lagi beberapa saat.');
+      } else {
+        setErrorMsg(json?.message || 'Email atau password salah.');
       }
     } catch {
-      // Jika server backend offline saat pengujian dev
-    }
-
-    // 2. Fallback verifikasi ketat (hanya akun resmi yang boleh masuk, tolak input asal-asalan)
-    const validEmails = ['admin@loginrek.com', 'timmy@loginrek.com', 'timmy@loginrekk.com'];
-    try {
-      const savedProfile = localStorage.getItem('admin_profile');
-      if (savedProfile) {
-        const parsed = JSON.parse(savedProfile);
-        if (parsed.email) validEmails.push(parsed.email.toLowerCase().trim());
-      }
-    } catch {}
-
-    const activeAdminPassword = localStorage.getItem('admin_password');
-    const validPasswords = ['password123', 'admin123', 'Wakwaw123'];
-    if (activeAdminPassword) validPasswords.push(activeAdminPassword);
-
-    const enteredEmail = email.trim().toLowerCase();
-    if (validEmails.includes(enteredEmail) && validPasswords.includes(password)) {
-      localStorage.setItem('admin_token', 'token-offline-admin');
-      const fallbackUser = enteredEmail.includes('timmy')
-        ? { fullName: 'Timmy', email: 'timmy@loginrek.com', role: 'Administrator' }
-        : { fullName: 'Admin Piposmart', email: 'admin@loginrek.com', role: 'Administrator' };
-      localStorage.setItem('admin_user', JSON.stringify(fallbackUser));
+      setErrorMsg('Server tidak dapat dihubungi. Periksa koneksi lalu coba lagi.');
+    } finally {
       setIsLoading(false);
-      onLoginSuccess();
-    } else {
-      setIsLoading(false);
-      setErrorMsg('Email atau password admin salah.');
     }
   };
 

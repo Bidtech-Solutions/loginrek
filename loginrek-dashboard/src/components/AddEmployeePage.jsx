@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Mail
 } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 /**
  * Generate email otomatis berdomain @loginrek.com berdasarkan nama depan.
@@ -82,13 +83,10 @@ export default function AddEmployeePage({ onBack, onSave }) {
     setErrorMsg('');
 
     const emailToSend = autoEmail || `${name.trim().toLowerCase().replace(/[^a-z0-9]/g, '')}@loginrek.com`;
-    const initials = name.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'EM';
 
     try {
-      // Kirim data ke REST API backend AdonisJS
-      const response = await fetch('http://localhost:3333/api/v1/employees', {
+      const response = await apiFetch('/employees', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: name.trim(),
           email: emailToSend,
@@ -106,32 +104,14 @@ export default function AddEmployeePage({ onBack, onSave }) {
         onSave(createdEmp);
         return;
       }
+
+      // Tolak apa adanya (mis. email sudah terdaftar): jangan membuat akun "lokal" yang tidak ada di server.
+      setErrorMsg(result?.message || 'Gagal menyimpan karyawan. Coba lagi.');
     } catch {
-      // Jika backend tidak aktif saat offline dev, fallback ke penyimpanan lokal
+      setErrorMsg('Server tidak dapat dihubungi. Karyawan belum disimpan.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Fallback simpan lokal jika offline
-    const newEmp = {
-      id: Date.now(),
-      name: name.trim(),
-      fullName: name.trim(),
-      email: emailToSend,
-      role: role.trim(),
-      department: 'Engineering',
-      type: employeeType,
-      location: 'Kantor Pusat Batam',
-      phone: '',
-      avatar: photoPreview || '',
-      initials,
-      joinDate: 'Hari ini',
-      attendanceSummary: '0 Hari',
-      lateCount: '0x',
-      onTimeCount: '0x',
-      status: 'Aktif'
-    };
-
-    onSave(newEmp);
-    setIsSubmitting(false);
   };
 
   return (

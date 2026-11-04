@@ -1,0 +1,180 @@
+# =============================================================================
+# loginrek — PRODUCTION (VPS) di belakang Traefik
+#
+# Image backend & dashboard ditarik dari GHCR. File ini + .env.example dikirim ke
+# VPS oleh .github/workflows/loginrek.yml. Variabel dibaca dari .env di folder
+# yang sama (lihat .env.example). Jalankan:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Traefik (jaringan eksternal `traefik-network`) yang menerima trafik publik:
+#   https://${DASHBOARD_DOMAIN}  -> lr-dashboard  (HR web, mis. loginrek.bidtech.co.id)
+#   https://${API_DOMAIN}        -> lr-backend    (REST API + foto di /uploads/*)
+# RustFS (object storage) hanya di jaringan internal — tidak diekspos ke Traefik/publik;
+# foto disajikan backend lewat GET /uploads/*. Tidak ada port aplikasi yang dipublikasikan
+# ke host; konsol RustFS hanya lewat SSH tunnel.
+#
+# Image dibangun CI dari loginrek-backend/Dockerfile dan loginrek-dashboard/Dockerfile lalu di-push ke
+# GHCR. Blok `build:` di bawah hanya untuk build manual (`docker compose -f docker-compose.prod.yml build`)
+# dan menghasilkan image dengan nama/tag yang sama; konfigurasinya identik dengan CI.
+#
+# Awalan `lr-` pada nama service/middleware/router disengaja: nama service menjadi alias
+# DNS di jaringan `traefik-network` yang dipakai bersama project lain di VPS.
+# =============================================================================
+
+name: loginrek
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  lr-dashboard:
+    image: ghcr.io/${GHCR_OWNER:-change-me}/loginrek-dashboard:${IMAGE_TAG:-latest}
+    build:
+      context: ./loginrek-dashboard
+      args:
+        VITE_API_URL: https://${API_DOMAIN:?isi API_DOMAIN di .env}   # dibakar ke bundle saat build
+    restart: unless-stopped
+    logging: *logging
+    networks: [ traefik ]
+    deploy:
+      resources: { limits: { memory: 128m } }
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-network
+      # --- middleware bersama (awalan lr- agar tidak bentrok dengan project lain) ---
+      - traefik.http.middlewares.lr-secure-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.lr-secure-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.lr-secure-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.lr-secure-headers.headers.frameDeny=true
+      - traefik.http.middlewares.lr-secure-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.lr-secure-headers.headers.permissionsPolicy=camera=(), microphone=()
+      - traefik.http.middlewares.lr-compress.compress=true
+      # --- dashboard ---
+      - traefik.http.services.lr-dashboard.loadbalancer.server.port=80
+      - traefik.http.routers.lr-dashboard.rule=Host(`${DASHBOARD_DOMAIN}`)
+      - traefik.http.routers.lr-dashboard.entrypoints=websecure
+      - traefik.http.routers.lr-dashboard.tls.certresolver=letsencrypt
+      - traefik.http.routers.lr-dashboard.service=lr-dashboard
+      - traefik.http.routers.lr-dashboard.middlewares=lr-secure-headers,lr-compress
+
+  lr-backend:
+    image: ghcr.io/${GHCR_OWNER:-change-me}/loginrek-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./loginrek-backend
+    restart: unless-stopped
+    logging: *logging
+    environment:                      # sengaja eksplisit: hanya variabel yang dibutuhkan backend
+      PORT: 3333
+      APP_ENV: production
+      TZ: ${TZ:-Asia/Jakarta}
+      DB_DRIVER: postgres
+      DB_HOST: lr-postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-loginrek}
+      DB_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      DB_NAME: ${DB_NAME:-loginrek_db}
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET di .env}
+      CORS_ORIGINS: https://${DASHBOARD_DOMAIN:?isi DASHBOARD_DOMAIN di .env}
+      # Akun HR/admin pertama (dibuat sekali saat tabel users kosong); karyawan uji tidak dibuat di production
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?isi SEED_ADMIN_EMAIL di .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?isi SEED_ADMIN_PASSWORD di .env}
+      RUSTFS_ENDPOINT: lr-rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?isi RUSTFS_ACCESS_KEY di .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?isi RUSTFS_SECRET_KEY di .env}
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-loginrek-media}
+      RUSTFS_USE_SSL: "false"
+      RUSTFS_PUBLIC_URL: ""            # kosong: foto disajikan backend lewat /uploads/*
+      IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-1280}
+      IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-720}
+      IMAGE_WEBP_QUALITY: ${IMAGE_WEBP_QUALITY:-80}
+    volumes:
+      - uploads_data:/app/public/uploads   # = WORKDIR /app + public/uploads di Dockerfile (fallback foto & aset)
+    networks: [ traefik, internal ]
+    depends_on:
+      lr-postgres: { condition: service_healthy }
+      lr-rustfs: { condition: service_started }
+    deploy:
+      resources: { limits: { memory: 256m } }
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-network
+      - traefik.http.middlewares.lr-api-ratelimit.ratelimit.average=30
+      - traefik.http.middlewares.lr-api-ratelimit.ratelimit.burst=60
+      # Domain diproksi Cloudflare: hitung rate limit per IP klien asli
+      - traefik.http.middlewares.lr-api-ratelimit.ratelimit.sourcecriterion.requestheadername=CF-Connecting-IP
+      - traefik.http.services.lr-api.loadbalancer.server.port=3333
+      - traefik.http.routers.lr-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.lr-api.entrypoints=websecure
+      - traefik.http.routers.lr-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.lr-api.service=lr-api
+      - traefik.http.routers.lr-api.middlewares=lr-secure-headers,lr-compress,lr-api-ratelimit
+
+  lr-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${DB_USER:-loginrek}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      POSTGRES_DB: ${DB_NAME:-loginrek_db}
+      TZ: ${TZ:-Asia/Jakarta}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [ internal ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources: { limits: { memory: 512m } }
+
+  lr-rustfs-perms:
+    image: alpine:3.22
+    user: root
+    command: [ "sh", "-c", "chown -R 10001:10001 /data" ]
+    volumes:
+      - rustfs_data:/data
+    restart: "no"
+    logging: *logging
+
+  lr-rustfs:
+    image: rustfs/rustfs:1.0.4
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?isi RUSTFS_ACCESS_KEY di .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?isi RUSTFS_SECRET_KEY di .env}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - rustfs_data:/data
+    ports:
+      - "127.0.0.1:${RUSTFS_CONSOLE_HOST_PORT:-9001}:9001"   # console hanya via SSH tunnel
+    networks: [ internal ]            # sengaja TANPA jaringan traefik: tidak terjangkau dari luar
+    depends_on:
+      lr-rustfs-perms: { condition: service_completed_successfully }
+    deploy:
+      resources: { limits: { memory: 512m } }
+
+networks:
+  traefik:
+    name: traefik-network
+    external: true
+  internal:
+    name: loginrek-internal
+
+# Nama volume dikunci agar data tidak "hilang" bila nama folder/project berubah.
+volumes:
+  pg_data:
+    name: loginrek_pg_data
+  rustfs_data:
+    name: loginrek_rustfs_data
+  uploads_data:
+    name: loginrek_uploads_data

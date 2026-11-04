@@ -1,4 +1,5 @@
 import React from 'react';
+import { NavLink, useNavigate } from 'react-router';
 import { 
   CalendarClock, 
   Users, 
@@ -10,20 +11,24 @@ import {
 } from 'lucide-react';
 import { getInitials } from '../data/mockData';
 
-export default function Sidebar({ currentTab, setCurrentTab, adminData, onLogout, isMobileOpen, setIsMobileOpen }) {
+export default function Sidebar({ adminData, onLogout, isMobileOpen, setIsMobileOpen }) {
+  const navigate = useNavigate();
   const menuItems = [
     {
       id: 'attendance',
+      to: '/attendance',
       label: 'Riwayat Absensi',
       icon: CalendarClock,
     },
     {
       id: 'employees',
+      to: '/employees',
       label: 'Karyawan',
       icon: Users,
     },
     {
       id: 'settings',
+      to: '/settings',
       label: 'Pengaturan',
       icon: Sliders,
     },
@@ -67,20 +72,19 @@ export default function Sidebar({ currentTab, setCurrentTab, adminData, onLogout
             <nav className="sidebar-nav">
               {menuItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = currentTab === item.id;
                 return (
-                  <button
+                  <NavLink
                     key={item.id}
                     id={`menu-${item.id}`}
+                    to={item.to}
                     onClick={() => {
-                      setCurrentTab(item.id);
                       if (setIsMobileOpen) setIsMobileOpen(false);
                     }}
-                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                   >
                     <Icon className="nav-item-icon" size={19} />
                     <span className="nav-item-label">{item.label}</span>
-                  </button>
+                  </NavLink>
                 );
               })}
             </nav>
@@ -91,7 +95,7 @@ export default function Sidebar({ currentTab, setCurrentTab, adminData, onLogout
             <div 
               className="admin-profile-card"
               onClick={() => {
-                setCurrentTab('settings');
+                navigate('/settings');
                 if (setIsMobileOpen) setIsMobileOpen(false);
               }}
               title="Buka Pengaturan Akun"

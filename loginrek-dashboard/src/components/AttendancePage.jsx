@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import AttendanceDetailPage from './AttendanceDetailPage';
 import { 
   Users, 
@@ -85,7 +86,9 @@ export default function AttendancePage({ attendanceData = [], employeesData = []
   const [statusFilter, setStatusFilter] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  // Rute: /attendance (daftar), /attendance/:recordId (detail)
+  const navigate = useNavigate();
+  const { recordId } = useParams();
 
   const datePickerRef = useRef(null);
   const itemsPerPage = 8;
@@ -302,11 +305,15 @@ export default function AttendancePage({ attendanceData = [], employeesData = []
   const percentTerlambat = totalHadir > 0 ? ((terlambat / totalHadir) * 100).toFixed(1) : '0';
 
   // If a record is selected, show the Attendance Detail Page
-  if (selectedRecord) {
+  if (recordId) {
+    const selectedRecord =
+      recordsForDate.find((r) => String(r.id) === recordId) ??
+      (attendanceData || []).find((r) => String(r.id) === recordId);
+    if (!selectedRecord) return <Navigate to="/attendance" replace />;
     return (
       <AttendanceDetailPage 
         record={selectedRecord} 
-        onBack={() => setSelectedRecord(null)} 
+        onBack={() => navigate('/attendance')} 
       />
     );
   }
@@ -632,7 +639,7 @@ export default function AttendancePage({ attendanceData = [], employeesData = []
                     <td>
                       <button 
                         className="btn-action-icon"
-                        onClick={() => setSelectedRecord(item)}
+                        onClick={() => navigate(`/attendance/${item.id}`)}
                         title={`Lihat detail presensi ${item.name}`}
                         aria-label={`Detail ${item.name}`}
                       >
