@@ -1,9 +1,10 @@
 # =============================================================================
 # loginrek — PRODUCTION (VPS) di belakang Traefik
 #
-# Image backend & dashboard ditarik dari GHCR. File ini + .env.example dikirim ke
-# VPS oleh .github/workflows/loginrek.yml. Variabel dibaca dari .env di folder
-# yang sama (lihat .env.example). Jalankan:
+# Image backend & dashboard ditarik dari GHCR. File ini + .env dikirim ke VPS oleh
+# .github/workflows/loginrek.yml; .env dibuat workflow dari .env.example dengan nilai
+# production (secret dari GitHub Secrets). Variabel dibaca dari .env di folder
+# yang sama. Jalankan manual (mis. rollback via IMAGE_TAG):
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Traefik (jaringan eksternal `traefik-network`) yang menerima trafik publik:

@@ -5,11 +5,19 @@
 #   build   : build image Docker backend & dashboard -> push ke GHCR
 #             (tag sha-xxxxxxx + latest)
 #   package : bungkus docker-compose.prod.yml + .env.example sebagai artifact
-#   deploy  : kirim artifact ke VPS (SCP) -> pull image -> up
+#   deploy  : buat .env production dari .env.example (nilai production diisi dari
+#             env/secrets di bawah), kirim ke VPS (SCP) -> pull image -> up
 #
 # VPS memakai Traefik (jaringan eksternal traefik-network); lihat docker-compose.prod.yml.
-# Secrets yang dibutuhkan: VPS_HOST, VPS_SSH_KEY
+# Secrets (environment `production`) yang dibutuhkan:
+#   VPS_HOST, VPS_SSH_KEY,
+#   JWT_SECRET (min. 32 karakter), DB_PASSWORD, RUSTFS_SECRET_KEY
+# Akun awal (SEED_ADMIN_*, SEED_EMPLOYEE_*) dan RUSTFS_ACCESS_KEY diambil apa adanya dari .env.example.
 # (opsional: VPS_USER default "root", VPS_PORT default 22, VPS_DEPLOY_PATH default /opt/loginrek).
+# Nilai non-rahasia production (domain dll.) ada di blok `env` job deploy. Setiap deploy
+# MENIMPA .env di VPS dari .env.example + nilai-nilai tersebut; ubah konfigurasi di sini,
+# bukan lewat edit .env di VPS. Variabel baru: tambahkan ke .env.example, lalu override di
+# langkah "Buat .env production" bila nilainya berbeda di production.
 # Login GHCR di VPS otomatis memakai github.actor + GITHUB_TOKEN (berlaku selama job deploy),
 # jadi tidak perlu PAT. Skema database dimigrasi otomatis
 # (GORM AutoMigrate) saat backend start. Aplikasi mobile (loginrek-mobile)
@@ -35,8 +43,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # Domain API publik; dibakar ke bundle dashboard saat build.
-  API_URL: https://loginrek-api.bidtech.co.id
+  # Domain publik production (DNS mengarah ke VPS). API_DOMAIN dibakar ke bundle
+  # dashboard saat build sebagai VITE_API_URL.
+  DASHBOARD_DOMAIN: loginrek.bidtech.co.id
+  API_DOMAIN: loginrek-api.bidtech.co.id
 
 jobs:
   check-backend:
@@ -115,7 +125,7 @@ jobs:
         with:
           context: loginrek-${{ matrix.app }}
           push: true
-          build-args: ${{ matrix.app == 'dashboard' && format('VITE_API_URL={0}', env.API_URL) || '' }}
+          build-args: ${{ matrix.app == 'dashboard' && format('VITE_API_URL=https://{0}', env.API_DOMAIN) || '' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.app }}
@@ -152,11 +162,69 @@ jobs:
       GHCR_OWNER: ${{ needs.build.outputs.owner }}
       GHCR_USERNAME: ${{ github.actor }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Rahasia production -> masuk ke .env di VPS
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
     steps:
       - uses: actions/download-artifact@v8
         with:
           name: deploy-bundle
           path: bundle
+
+      - name: Buat .env production dari .env.example
+        run: |
+          set -euo pipefail
+
+          missing=0
+          for k in JWT_SECRET DB_PASSWORD RUSTFS_SECRET_KEY; do
+            if [ -z "${!k}" ]; then echo "::error::Secret $k belum diisi (Settings > Environments > production)"; missing=1; fi
+          done
+          [ "$missing" = 0 ] || exit 1
+          if [ "${#JWT_SECRET}" -lt 32 ]; then echo "::error::JWT_SECRET minimal 32 karakter"; exit 1; fi
+
+          cd bundle
+          cp .env.example .env
+
+          # Ganti nilai KEY di .env (atau tambahkan bila belum ada). Nilai lewat ENVIRON
+          # agar karakter khusus (| & \ $) tidak ditafsirkan.
+          set_env() {
+            K="$1" V="$2" awk '
+              BEGIN { k = ENVIRON["K"]; v = ENVIRON["V"] }
+              index($0, k "=") == 1 { print k "=" v; done = 1; next }
+              { print }
+              END { if (!done) print k "=" v }
+            ' .env > .env.tmp && mv .env.tmp .env
+          }
+
+          # -- umum & backend --
+          set_env APP_ENV production
+          set_env CORS_ORIGINS "https://$DASHBOARD_DOMAIN"
+          set_env JWT_SECRET "$JWT_SECRET"
+          # -- akun awal (SEED_*): tidak di-override, ikut nilai di .env.example --
+          # -- database & object storage (jaringan internal compose) --
+          set_env DB_USER loginrek
+          set_env DB_PASSWORD "$DB_PASSWORD"
+          set_env DB_NAME loginrek_db
+          set_env RUSTFS_ENDPOINT lr-rustfs:9000
+          set_env RUSTFS_SECRET_KEY "$RUSTFS_SECRET_KEY"
+          set_env RUSTFS_PUBLIC_URL ""
+          # -- domain & dashboard --
+          set_env DASHBOARD_DOMAIN "$DASHBOARD_DOMAIN"
+          set_env API_DOMAIN "$API_DOMAIN"
+          set_env VITE_API_URL "https://$API_DOMAIN"
+          # -- deploy --
+          set_env GHCR_OWNER "$GHCR_OWNER"
+          set_env IMAGE_TAG "$IMAGE_TAG"
+
+          # Pengaman: tidak boleh ada placeholder yang lolos ke production
+          if grep -qE '^[A-Z0-9_]+=(CHANGE_ME|change-me)$' .env; then
+            echo "Variabel yang masih placeholder:"
+            grep -E '^[A-Z0-9_]+=(CHANGE_ME|change-me)$' .env | sed -E 's/=.*//'
+            echo "::error::.env production masih berisi placeholder; tambahkan override di langkah ini."
+            exit 1
+          fi
+          echo "Variabel di .env production: $(grep -cE '^[A-Z0-9_]+=' .env)"
 
       - name: Siapkan folder di VPS
         uses: appleboy/ssh-action@v1
@@ -168,14 +236,14 @@ jobs:
           envs: DEPLOY_PATH
           script: mkdir -p "$DEPLOY_PATH"
 
-      - name: Kirim docker-compose.prod.yml & .env.example
+      - name: Kirim docker-compose.prod.yml & .env
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           port: ${{ secrets.VPS_PORT || '22' }}
           username: ${{ secrets.VPS_USER || 'root' }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "bundle/docker-compose.prod.yml,bundle/.env.example"
+          source: "bundle/docker-compose.prod.yml,bundle/.env"
           target: ${{ env.DEPLOY_PATH }}
           strip_components: 1
           overwrite: true
@@ -194,23 +262,8 @@ jobs:
             cd "$DEPLOY_PATH"
             export COMPOSE_FILE=docker-compose.prod.yml
 
-            # Deploy pertama: .env belum ada -> buat dari contoh lalu berhenti.
-            if [ ! -f .env ]; then
-              cp .env.example .env
-              echo "::error::.env belum ada di $DEPLOY_PATH. Sudah dibuat dari .env.example — isi nilai CHANGE_ME lalu jalankan ulang workflow."
-              exit 1
-            fi
-            if grep -qE '^[A-Z0-9_]+=CHANGE_ME' .env; then
-              echo "::error::.env masih berisi CHANGE_ME. Lengkapi dulu di $DEPLOY_PATH/.env"
-              exit 1
-            fi
-
-            # Simpan tag image yang dideploy ke .env (memudahkan rollback manual)
-            set_env() {
-              if grep -q "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
-            }
-            set_env IMAGE_TAG "$IMAGE_TAG"
-            set_env GHCR_OWNER "$GHCR_OWNER"
+            # .env dibuat workflow dari .env.example (langkah "Buat .env production")
+            chmod 600 .env
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
