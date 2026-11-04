@@ -42,7 +42,8 @@ export async function api<T>(
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new ApiError(res.status, json.errors ?? [{ message: res.statusText }]);
+      const errMsg = json.message || (Array.isArray(json.errors) && json.errors[0]?.message) || res.statusText || ('HTTP ' + res.status);
+      throw new ApiError(res.status, [{ message: errMsg }]);
     }
     return json as T;
   } finally {
@@ -71,6 +72,11 @@ export const authApi = {
     }),
   me: () => api<{ data: User }>('/auth/me'),
   logout: () => api<{ message: string }>('/auth/logout', { method: 'POST' }),
+  updateProfile: (payload: { email: string; currentPassword?: string; newPassword?: string; fullName?: string; avatarUrl?: string }) =>
+    api<{ success: boolean; message: string; user?: any }>('/auth/profile', {
+      method: 'PUT',
+      body: payload,
+    }),
 };
 
 

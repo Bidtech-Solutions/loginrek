@@ -1,6 +1,0 @@
-.adonisjs
-node_modules
-build
-
-# Dibuat otomatis oleh Lucid setelah migration:run
-database/schema.ts

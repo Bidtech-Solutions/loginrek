@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 
-import { setAccessToken } from '@/lib/api';
+import { attendanceApi, setAccessToken } from '@/lib/api';
 import { tokenStorage } from '@/lib/token-storage';
 import { userStore, UserAccount } from '@/lib/user-store';
 import { syncStore } from '@/lib/sync-store';
@@ -148,11 +148,49 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       async function refreshUser() {
-        const u = await userStore.getCurrentUser();
+        let u = await userStore.getCurrentUser();
         if (u) {
           setCurrentUser(u);
           setTodayCheckIn(u.todayCheckIn ?? null);
         }
+
+        try {
+          const res = await attendanceApi.getToday();
+          if (res?.data) {
+            if (res.data.hasAttended && res.data.attendance) {
+              const att = res.data.attendance;
+              setTodayCheckIn({ time: att.clockInTime, isLate: att.isLate });
+              if (u) {
+                const synced = {
+                  ...u,
+                  todayCheckIn: {
+                    date: res.data.today,
+                    time: att.clockInTime,
+                    isLate: att.isLate,
+                    photoUri: att.photoPath ?? u.todayCheckIn?.photoUri,
+                  },
+                };
+                await userStore.setCurrentUser(synced);
+                setCurrentUser(synced);
+              }
+            } else if (!res.data.hasAttended) {
+              const pendingCount = await syncStore.getPendingCount();
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const localHasCheckedInToday = u?.todayCheckIn?.date === todayStr;
+
+              // Jangan pernah reset jika user sudah absen hari ini di HP atau ada antrean pending
+              if (pendingCount === 0 && !localHasCheckedInToday) {
+                setTodayCheckIn(null);
+                if (u && u.todayCheckIn) {
+                  const cleared = { ...u, todayCheckIn: null };
+                  await userStore.setCurrentUser(cleared);
+                  setCurrentUser(cleared);
+                }
+              }
+            }
+          }
+        } catch {}
+
         await triggerAutoSync();
       }
       refreshUser();

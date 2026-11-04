@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,10 +16,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { getMediaUrl } from '@/config/env';
 import * as ImagePicker from 'expo-image-picker';
 
-import { setAccessToken } from '@/lib/api';
+import { authApi, ApiError, setAccessToken } from '@/lib/api';
 import { tokenStorage } from '@/lib/token-storage';
 import { userStore, UserAccount } from '@/lib/user-store';
 import { permissionStore } from '@/lib/permission-store';
@@ -45,18 +46,33 @@ export default function ProfileScreen() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  // Ambil data user aktif saat ini
-  useEffect(() => {
-    async function loadUser() {
-      const u = await userStore.getCurrentUser();
-      if (u) {
-        setCurrentUser(u);
-        setFullName(u.fullName);
+  // Ambil data user aktif saat ini (re-sync setiap layar profil fokus)
+  useFocusEffect(
+    useCallback(() => {
+      async function loadUser() {
+        const u = await userStore.getCurrentUser();
+        if (u) {
+          setCurrentUser(u);
+          setFullName(u.fullName);
+          setImageError(false);
+        }
+
+        try {
+          const res = await authApi.me();
+          if (res?.data?.avatarUrl) {
+            if (u && u.avatarUrl !== res.data.avatarUrl) {
+              const updated = { ...u, avatarUrl: res.data.avatarUrl };
+              await userStore.setCurrentUser(updated);
+              setCurrentUser(updated);
+            }
+          }
+        } catch {}
       }
-    }
-    loadUser();
-  }, []);
+      loadUser();
+    }, [])
+  );
 
   // Jam realtime berdetak setiap detik
   useEffect(() => {
@@ -70,7 +86,10 @@ export default function ProfileScreen() {
   // Simpan perubahan kata sandi
   async function handleSave() {
     if (!currentPassword && !newPassword) {
-      Alert.alert('Perhatian', 'Masukkan password saat ini dan password baru untuk mengubah kata sandi.');
+      Alert.alert(
+        'Profil Tersimpan Otomatis 🎉',
+        'Foto profil kamu sudah tersimpan secara otomatis tanpa perlu menekan tombol simpan.\n\nMasukkan kata sandi saat ini dan kata sandi baru jika ingin mengubah kata sandi akun.'
+      );
       return;
     }
 
@@ -89,13 +108,33 @@ export default function ProfileScreen() {
       return;
     }
 
-    // Validasi apakah password saat ini cocok dengan akun
-    if (currentUser && !currentUser.passwords.includes(currentPassword.trim())) {
-      Alert.alert('Gagal', 'Password saat ini yang Anda masukkan salah.');
-      return;
+    // 1. Coba perbarui ke REST API backend (AdonisJS / SQLite)
+    let backendUpdated = false;
+    if (currentUser?.email) {
+      try {
+        await authApi.updateProfile({
+          email: currentUser.email,
+          currentPassword: currentPassword.trim(),
+          newPassword: newPassword.trim(),
+        });
+        backendUpdated = true;
+      } catch (apiErr: any) {
+        if (apiErr instanceof ApiError || apiErr?.status === 400 || apiErr?.status === 401) {
+          Alert.alert('Gagal', apiErr.message || 'Password saat ini yang Anda masukkan salah.');
+          return;
+        }
+      }
     }
 
-    // Simpan kata sandi baru ke akun
+    // 2. Fallback verifikasi lokal jika offline
+    if (!backendUpdated) {
+      if (currentUser && !currentUser.passwords.includes(currentPassword.trim())) {
+        Alert.alert('Gagal', 'Password saat ini yang Anda masukkan salah.');
+        return;
+      }
+    }
+
+    // 3. Simpan kata sandi baru ke sesi lokal
     if (currentUser) {
       const updatedUser: UserAccount = {
         ...currentUser,
@@ -107,7 +146,7 @@ export default function ProfileScreen() {
 
     setCurrentPassword('');
     setNewPassword('');
-    Alert.alert('Sukses', 'Kata sandi berhasil diperbarui!');
+    Alert.alert('Sukses 🎉', 'Kata sandi berhasil diperbarui! Silakan gunakan kata sandi baru saat login berikutnya.');
   }
 
   // Ubah foto profil dari galeri perangkat dengan izin resmi
@@ -130,19 +169,44 @@ export default function ProfileScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1], // Format persegi 1:1 untuk avatar profil
-        quality: 0.85,
+        quality: 0.35, // Ringan (~40-60KB) & tajam untuk avatar
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const photoUri = result.assets[0].uri;
+        const asset = result.assets[0];
+        const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
         setIsUploadingPhoto(true);
 
-        const updated = await userStore.updateAvatar(photoUri);
+        // 1. Simpan langsung ke memori lokal HP agar avatar seketika berubah di layar
+        const updated = await userStore.updateAvatar(base64Data);
         if (updated) {
           setCurrentUser(updated);
         }
 
-        Alert.alert('Sukses! 🎉', 'Foto profil akun Anda berhasil diperbarui.');
+        // 2. Unggah otomatis ke server backend (AdonisJS / SQLite)
+        let syncedToServer = false;
+        if (currentUser?.email) {
+          try {
+            const apiRes = await authApi.updateProfile({
+              email: currentUser.email,
+              avatarUrl: base64Data,
+            });
+            if (apiRes?.user?.avatarUrl) {
+              await userStore.updateAvatar(apiRes.user.avatarUrl);
+            }
+            syncedToServer = true;
+          } catch (apiErr: any) {
+            console.warn('Gagal sync foto ke server:', apiErr?.message);
+          }
+        }
+
+        Alert.alert(
+          'Foto Profil Berhasil Diperbarui! 🎉',
+          syncedToServer
+            ? 'Foto profil kamu otomatis tersimpan dan langsung terupdate di Web Dashboard Admin.'
+            : 'Foto profil tersimpan di HP dan akan otomatis tersinkron ke Web Dashboard saat server terhubung.'
+        );
       }
     } catch (err: any) {
       Alert.alert('Gagal Mengambil Foto', err?.message || 'Terjadi kesalahan saat membuka galeri foto.');
@@ -195,26 +259,31 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Sub Header: Edit Profil & Tombol Simpan */}
+          {/* Sub Header: Edit Profil */}
           <View style={styles.pageTitleRow}>
             <Text style={styles.pageTitle}>Edit Profil</Text>
-            <Pressable onPress={handleSave} hitSlop={10}>
-              <Text style={styles.saveLink}>Simpan</Text>
-            </Pressable>
           </View>
 
           {/* Avatar Section */}
           <View style={styles.avatarContainer}>
             <View style={styles.avatarWrapper}>
-              <Image
-                source={
-                  currentUser?.avatarUrl
-                    ? { uri: currentUser.avatarUrl }
-                    : require('@/assets/budi_avatar.jpg')
-                }
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
+              {(() => {
+                const resolvedUrl = getMediaUrl(currentUser?.avatarUrl);
+                return (
+                  <Image
+                    source={
+                      !imageError && resolvedUrl
+                        ? { uri: resolvedUrl }
+                        : require('@/assets/default_avatar.png')
+                    }
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                    onError={() => {
+                      setImageError(true);
+                    }}
+                  />
+                );
+              })()}
               {isUploadingPhoto && (
                 <View style={styles.avatarLoadingOverlay}>
                   <ActivityIndicator color="#FFFFFF" size="small" />

@@ -68,10 +68,17 @@ export default function LoginScreen() {
         router.replace('/(app)/home');
         return;
       } catch (apiErr: any) {
-        // Jika server aktif dan menolak kredensial (password salah atau user tidak terdaftar)
-        if (apiErr instanceof ApiError || apiErr?.status === 400 || apiErr?.status === 401) {
-          setErrorMessage('Email atau kata sandi salah. Silakan periksa kembali.');
-          return;
+        // Jika server aktif dan menolak kredensial
+        if (apiErr instanceof ApiError) {
+          const serverMsg = apiErr.errors?.[0]?.message;
+          if (apiErr.status === 404 || serverMsg === 'Akun tidak tersedia') {
+            setErrorMessage('Akun tidak tersedia');
+            return;
+          }
+          if (apiErr.status === 400 || apiErr.status === 401) {
+            setErrorMessage(serverMsg || 'Kata sandi salah. Silakan periksa kembali.');
+            return;
+          }
         }
         // Jika offline atau server belum aktif, lanjut ke pengecekan akun lokal
       }
@@ -84,12 +91,13 @@ export default function LoginScreen() {
         setAccessToken(token);
         router.replace('/(app)/home');
         return;
+      } else if (authResult.error) {
+        setErrorMessage(authResult.error);
+        return;
       }
 
-      // 3. Tampilkan pesan kesalahan yang jelas
-      setErrorMessage(
-        'Gagal login. Pastikan email & password benar, server backend di laptop sudah aktif (npm run dev), dan HP terhubung ke Wi-Fi yang sama.'
-      );
+      // 3. Default jika akun tidak terdaftar di sistem
+      setErrorMessage('Akun tidak tersedia');
     } finally {
       setIsLoading(false);
     }

@@ -1,96 +1,42 @@
-# Arsitektur — loginrek-dashboard
+# Arsitektur — Login Rek
 
-## Gambaran sistem
+## Gambaran Sistem
 
 ```mermaid
 flowchart LR
   subgraph Client
-    M[loginrek-mobile<br/>React Native]
-    W[Browser admin]
+    M[loginrek-mobile<br/>React Native / Expo]
+    W[loginrek-dashboard<br/>React 19 + Vite :5173]
   end
 
-  subgraph VPS["VPS (Docker)"]
-    N[Nginx host<br/>:80/:443]
-    D[loginrek-dashboard<br/>AdonisJS :3333]
-    P[(PostgreSQL 17)]
-    S[(RustFS<br/>S3 :9000)]
+  subgraph Backend & Storage
+    B[loginrek-backend-go<br/>Go + Gin REST API :3333]
+    P[(PostgreSQL / SQLite fallback)]
+    S[(RustFS / S3 / Local Disk)]
   end
 
-  M -- "HTTPS /api/v1 (Bearer token)" --> N
-  W -- "HTTPS / (session cookie)" --> N
-  N -- "loginrek.<domain>" --> D
-  N -- "storage.<domain> (signed URL)" --> S
-  D --> P
-  D -- "S3 API internal" --> S
-  M -. "GET signed URL foto" .-> N
+  M -- "HTTP /api/v1 (JWT Token)" --> B
+  W -- "HTTP /api/v1 (JWT Token)" --> B
+  B --> P
+  B --> S
 ```
 
-- Satu aplikasi AdonisJS melayani **dua produk**: dashboard web (Inertia) dan REST API mobile.
-- Semua container hanya bind ke `127.0.0.1`; akses publik hanya lewat Nginx di host.
-- Bucket RustFS **private**; client membuka file lewat **signed URL** berumur pendek
-  yang ditandatangani dengan endpoint publik (`S3_PUBLIC_ENDPOINT`).
+### Komponen Sistem:
+1. **`loginrek-backend-go`** (Port 3333):
+   - REST API engine berkinerja tinggi menggunakan Go Gin & GORM.
+   - Mengelola autentikasi JWT, password hashing bcrypt, AutoMigrate skema database (PostgreSQL dengan fallback otomatis ke SQLite lokal), dan kompresi foto WebP.
+2. **`loginrek-dashboard`** (Port 5173):
+   - Frontend Single Page Application (SPA) berbasis React 19 + Vite.
+   - Digunakan oleh HR/Admin untuk live monitoring absensi, peta interaktif Leaflet, manajemen data karyawan, dan konfigurasi radius/jam kerja.
+3. **`loginrek-mobile`** (Port 8081):
+   - Aplikasi mobile untuk karyawan absensi berbasis React Native + Expo.
+   - Dilengkapi validasi lokasi GPS, verifikasi foto selfie, dan mode offline sync.
 
-## Lapisan aplikasi
-
-```
-HTTP request
-  └─ start/kernel.ts (server middleware: static, cors, vite, inertia)
-      └─ router middleware: bodyparser, session, shield(CSRF), auth init
-          └─ start/routes.ts
-              ├─ web    : middleware.auth()                      -> Inertia page
-              └─ /api/v1: middleware.forceJson() [+ auth api]   -> JSON
-                  └─ controller -> validator (Vine) -> service -> model (Lucid)
-                                                       └─ drive (RustFS)
-                  └─ transformer -> serialize -> { data }
-```
-
-Aturan:
-- **Controller** tipis: validasi input, panggil service, kembalikan transformer.
-- **Service** (`app/services/*`) berisi logika bisnis (aturan keterlambatan, geofence, dll).
-- **Model** hanya akses data + relasi; kolom berasal dari `database/schema.ts` (generated).
+---
 
 ## Autentikasi
 
-| Guard | Pengguna            | Mekanisme                         | Masa berlaku |
-| ----- | ------------------- | --------------------------------- | ------------ |
-| `web` | Admin/HR dashboard  | Session cookie `loginrek-session` | 2 jam (config/session.ts) |
-| `api` | Karyawan (mobile)   | Opaque token `lrk_...` di tabel `auth_access_tokens` | 30 hari |
-
-- Akun karyawan dibuat oleh admin; mobile tidak punya signup.
-- Logout mobile menghapus token aktif (`POST /api/v1/auth/logout`).
-- Otorisasi berbasis peran (admin, hr, karyawan) **belum** dibuat — rencana pakai `@adonisjs/bouncer`.
-
-## Alur absensi (rencana)
-
-```mermaid
-sequenceDiagram
-  participant App as Mobile
-  participant API as AdonisJS
-  participant DB as PostgreSQL
-  participant S3 as RustFS
-  App->>App: Ambil lokasi GPS + selfie
-  App->>API: POST /api/v1/attendances/check-in (multipart: photo, lat, lng)
-  API->>DB: Ambil shift & lokasi kantor karyawan
-  API->>API: Validasi geofence (radius) + jendela waktu shift
-  API->>S3: Simpan foto (attendances/yyyy/mm/{employeeId}/{uuid}.jpg)
-  API->>DB: Insert attendances (status: present/late)
-  API-->>App: { data: attendance }
-```
-
-## Lingkungan
-
-| Lingkungan | Cara jalan | DB / Storage |
-| ---------- | ---------- | ------------ |
-| Development | `npm run dev` di host | `docker compose up -d postgres rustfs` (root) |
-| Production | image GHCR via `docker-compose.yml` di VPS | container `postgres` & `rustfs` di network `loginrek` |
-
-## Observabilitas
-
-- `GET /health` → cek koneksi DB (dipakai healthcheck Docker & deploy `--wait`).
-- Log JSON (pino) ke stdout, dirotasi Docker (`max-size 10m`, 3 file).
-
-## Keputusan yang masih terbuka
-
-- Role & permission (bouncer) dan struktur organisasi (departemen/jabatan).
-- Penanganan absen offline di mobile (antrian lokal + sinkron).
-- Backup off-server untuk PostgreSQL dan bucket RustFS.
+| Klien | Pengguna | Mekanisme |
+| ----- | -------- | --------- |
+| **Web Dashboard** | Admin / HR | JWT Token (`admin_user` di localStorage) |
+| **Mobile App** | Karyawan / Pegawai | JWT Token (Bearer token di SecureStore / Storage) |

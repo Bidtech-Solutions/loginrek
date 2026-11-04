@@ -95,8 +95,19 @@ export default function AttendanceScreen() {
   // Ambil profil user dan status izin tersimpan
   useEffect(() => {
     async function init() {
-      const u = await userStore.getCurrentUser();
+      let u = await userStore.getCurrentUser();
       if (u) {
+        try {
+          const todayRes = await attendanceApi.getToday();
+          if (todayRes?.data && !todayRes.data.hasAttended) {
+            const pending = await syncStore.getPendingCount();
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (pending === 0 && u.todayCheckIn?.date !== todayStr) {
+              u = { ...u, todayCheckIn: null };
+              await userStore.setCurrentUser(u);
+            }
+          }
+        } catch {}
         setCurrentUser(u);
         if (u.todayCheckIn) {
           Alert.alert(
@@ -324,10 +335,11 @@ export default function AttendanceScreen() {
       let photoUri: string | null = null;
       if (Platform.OS !== 'web' && cameraRef.current?.takePictureAsync) {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.85,
+          quality: 0.18,
           mirror: false,
+          base64: true,
         });
-        photoUri = photo?.uri ?? null;
+        photoUri = photo?.base64 ? `data:image/jpeg;base64,${photo.base64}` : (photo?.uri ?? null);
       } else if (Platform.OS === 'web' && videoRef.current) {
         try {
           const video = videoRef.current;
@@ -423,43 +435,27 @@ export default function AttendanceScreen() {
         setCurrentUser(updated);
       }
 
-      if (!online && currentUser) {
-        // Simpan ke antrean sinkronisasi offline di memori HP
-        await syncStore.addToQueue({
-          email: currentUser.email,
-          capturedTime,
-          isLate: capturedIsLate,
-          photoUri: photoToSave,
-          latitude: officeConfig?.latitude ?? 1.105925,
-          longitude: officeConfig?.longitude ?? 104.075342,
-        });
+      let isDirectSuccess = false;
+      let isAlreadyCheckedIn = false;
 
-        Alert.alert(
-          'Presensi Dicatat (Mode Offline) 📲',
-          `Kamu sedang tidak terhubung ke internet/Wi-Fi. Absensi masuk kamu tetap tercatat sah pada pukul ${capturedTime} WIB dan tersimpan aman di HP.\n\nData akan otomatis disinkronkan ke server saat HP kembali online.`,
-          [
-            {
-              text: 'Ke Menu Utama',
-              onPress: () => router.replace('/(app)/home'),
-            },
-          ]
-        );
-      } else {
-        // Kirim langsung ke backend REST API
-        if (currentUser) {
-          try {
-            await attendanceApi.checkIn({
-              clockInTime: `${capturedTime} WIB`,
-              isLate: capturedIsLate,
-              photo: photoToSave,
-              latitude: officeConfig?.latitude ?? 1.105925,
-              longitude: officeConfig?.longitude ?? 104.075342,
-              distanceMeters: Math.round(officeDistance),
-              officeName: officeConfig?.name ?? 'Kantor Piposmart',
-              isOfflineSync: false,
-            });
-          } catch {
-            // Jika request ke server gagal/timeout, masukkan ke queue offline agar tidak hilang
+      if (online && currentUser) {
+        try {
+          await attendanceApi.checkIn({
+            clockInTime: `${capturedTime} WIB`,
+            isLate: capturedIsLate,
+            photo: photoToSave,
+            latitude: officeConfig?.latitude ?? 1.105925,
+            longitude: officeConfig?.longitude ?? 104.075342,
+            distanceMeters: Math.round(officeDistance),
+            officeName: officeConfig?.name ?? 'Kantor Piposmart',
+            isOfflineSync: false,
+          });
+          isDirectSuccess = true;
+        } catch (err: any) {
+          if (err?.status === 409) {
+            isAlreadyCheckedIn = true;
+            isDirectSuccess = true;
+          } else {
             await syncStore.addToQueue({
               email: currentUser.email,
               capturedTime,
@@ -470,10 +466,34 @@ export default function AttendanceScreen() {
             });
           }
         }
+      } else if (!online && currentUser) {
+        await syncStore.addToQueue({
+          email: currentUser.email,
+          capturedTime,
+          isLate: capturedIsLate,
+          photoUri: photoToSave,
+          latitude: officeConfig?.latitude ?? 1.105925,
+          longitude: officeConfig?.longitude ?? 104.075342,
+        });
+      }
 
+      if (isDirectSuccess) {
         Alert.alert(
           'Presensi Berhasil Terkirim! 🎉',
-          `Absensi masuk kamu telah tercatat pada pukul ${capturedTime} WIB (${capturedIsLate ? 'Terlambat' : 'Tepat Waktu'}).`,
+          isAlreadyCheckedIn
+            ? 'Kamu sudah tercatat presensi di server hari ini.'
+            : `Absensi masuk kamu telah tercatat di server pada pukul ${capturedTime} WIB (${capturedIsLate ? 'Terlambat' : 'Tepat Waktu'}). Foto dan lokasi GPS langsung tampil di Web Dashboard.`,
+          [
+            {
+              text: 'Ke Menu Utama',
+              onPress: () => router.replace('/(app)/home'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Presensi Dicatat (Mode Antrean / Offline) 📲',
+          `Absensi masuk kamu berhasil dicatat pada pukul ${capturedTime} WIB (${capturedIsLate ? 'Terlambat' : 'Tepat Waktu'}).\n\nData tersimpan aman di HP dan akan otomatis disinkronkan ke server saat jaringan terhubung.`,
           [
             {
               text: 'Ke Menu Utama',
@@ -544,7 +564,7 @@ export default function AttendanceScreen() {
                 source={
                   capturedPhotoUri !== 'fallback'
                     ? { uri: capturedPhotoUri }
-                    : require('@/assets/budi_avatar.jpg')
+                    : require('@/assets/default_avatar.png')
                 }
                 style={[
                   styles.previewPhotoImage,

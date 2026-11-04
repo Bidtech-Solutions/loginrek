@@ -21,15 +21,21 @@ describe('<HistoryScreen />', () => {
     jest.restoreAllMocks();
   });
 
-  test('merender halaman riwayat dengan default bulan Oktober 2026 dan clean empty state', async () => {
+  test('merender halaman riwayat dengan default bulan berjalan dan clean empty state', async () => {
     const { getByText } = await render(
       <SafeAreaProvider initialMetrics={metrics}>
         <HistoryScreen />
       </SafeAreaProvider>
     );
 
+    const monthNames = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    const currentLabel = `${monthNames[new Date().getMonth()]} ${new Date().getFullYear()}`;
+
     await waitFor(() => {
-      expect(getByText('Oktober 2026')).toBeTruthy();
+      expect(getByText(currentLabel)).toBeTruthy();
       expect(getByText('Belum ada absensi bulan ini.')).toBeTruthy();
       expect(getByText('Hadir')).toBeTruthy();
     });

@@ -17,12 +17,122 @@ export interface UserAccount {
   role: string;
   onTimeCount: number;
   lateCount: number;
-  todayCheckIn: { time: string; isLate: boolean; photoUri?: string } | null;
+  todayCheckIn: { date?: string; time: string; isLate: boolean; photoUri?: string } | null;
   history: AttendanceRecord[];
   avatarUrl?: string;
 }
 
 export const INITIAL_ACCOUNTS: Record<string, UserAccount> = {
+  'achul@loginrek.com': {
+    id: 'usr-achul-11',
+    email: 'achul@loginrek.com',
+    passwords: ['achul123', 'admin123', 'password123'],
+    fullName: 'achul',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'achul': {
+    id: 'usr-achul-11',
+    email: 'achul@loginrek.com',
+    passwords: ['achul123', 'admin123', 'password123'],
+    fullName: 'achul',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'wicaksono@loginrek.com': {
+    id: 'usr-wicaksono-10',
+    email: 'wicaksono@loginrek.com',
+    passwords: ['wicaksono123', 'password123', 'telaviv123', 'admin123'],
+    fullName: 'wicaksono',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'wicaksono': {
+    id: 'usr-wicaksono-10',
+    email: 'wicaksono@loginrek.com',
+    passwords: ['wicaksono123', 'password123', 'telaviv123', 'admin123'],
+    fullName: 'wicaksono',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'mariotelaviv@loginrek.com': {
+    id: 'usr-mario-08',
+    email: 'mariotelaviv@loginrek.com',
+    passwords: ['telaviv123', 'mario123', 'admin123', 'password123'],
+    fullName: 'mariotelaviv',
+    role: 'PRESIDEN PERTAMINA',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'telaviv@loginrek.com': {
+    id: 'usr-mario-08',
+    email: 'mariotelaviv@loginrek.com',
+    passwords: ['telaviv123', 'mario123', 'admin123', 'password123'],
+    fullName: 'mariotelaviv',
+    role: 'PRESIDEN PERTAMINA',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'mariotelaviv': {
+    id: 'usr-mario-08',
+    email: 'mariotelaviv@loginrek.com',
+    passwords: ['telaviv123', 'mario123', 'admin123', 'password123'],
+    fullName: 'mariotelaviv',
+    role: 'PRESIDEN PERTAMINA',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'telaviv': {
+    id: 'usr-mario-08',
+    email: 'mariotelaviv@loginrek.com',
+    passwords: ['telaviv123', 'mario123', 'admin123', 'password123'],
+    fullName: 'mariotelaviv',
+    role: 'PRESIDEN PERTAMINA',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'satria@loginrek.com': {
+    id: 'usr-satria-07',
+    email: 'satria@loginrek.com',
+    passwords: ['password123', 'satria123', 'admin123'],
+    fullName: 'satria wakumoro',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
+  'satria': {
+    id: 'usr-satria-07',
+    email: 'satria@loginrek.com',
+    passwords: ['password123', 'satria123', 'admin123'],
+    fullName: 'satria wakumoro',
+    role: 'IT',
+    onTimeCount: 0,
+    lateCount: 0,
+    todayCheckIn: null,
+    history: [],
+  },
   'timmy@gmail.com': {
     id: 'usr-timmy-01',
     email: 'timmy@gmail.com',
@@ -92,13 +202,16 @@ export const userStore = {
   // Autentikasi email dan password
   authenticate: async (emailInput: string, passwordInput: string): Promise<AuthResult> => {
     const cleanEmail = emailInput.trim().toLowerCase();
-    const account = INITIAL_ACCOUNTS[cleanEmail];
+    let account = INITIAL_ACCOUNTS[cleanEmail];
+    if (!account && !cleanEmail.includes('@')) {
+      account = INITIAL_ACCOUNTS[`${cleanEmail}@loginrek.com`];
+    }
     
     // Jika email tidak ditemukan
     if (!account) {
       return {
         success: false,
-        error: 'Email tidak terdaftar. Periksa kembali email Anda.',
+        error: 'Akun tidak tersedia',
       };
     }
 
@@ -106,7 +219,7 @@ export const userStore = {
     if (!account.passwords.includes(passwordInput.trim())) {
       return {
         success: false,
-        error: 'Kata sandi salah. Silakan coba lagi.',
+        error: 'Kata sandi salah. Silakan periksa kembali.',
       };
     }
 
@@ -205,7 +318,7 @@ export const userStore = {
 
     const updatedUser: UserAccount = {
       ...user,
-      todayCheckIn: { time: timeFormatted, isLate, photoUri },
+      todayCheckIn: { date: new Date().toISOString().slice(0, 10), time: timeFormatted, isLate, photoUri },
       onTimeCount: !isLate ? user.onTimeCount + 1 : user.onTimeCount,
       lateCount: isLate ? user.lateCount + 1 : user.lateCount,
       history: [newRecord, ...user.history.slice(0, 4)],

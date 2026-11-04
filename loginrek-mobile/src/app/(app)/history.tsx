@@ -74,7 +74,8 @@ const MONTHS_DATA: MonthConfig[] = [
   { id: '2026-12', name: 'Desember 2026', shortName: 'Desember', hasData: false, hadir: 0, terlambat: 0, tidakHadir: 0, activities: [] },
 ];
 
-const INITIAL_INDEX = 9; // Default terbuka di Oktober 2026 (Bulan saat ini)
+const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+const INITIAL_INDEX = Math.max(0, Math.min(11, new Date().getMonth()));
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
@@ -108,7 +109,7 @@ export default function HistoryScreen() {
   }, []);
 
   const currentMonth = MONTHS_DATA[selectedMonthIdx];
-  const isCurrentMonth = currentMonth.id === '2026-10';
+  const isCurrentMonth = currentMonth.id === currentYearMonth;
   const hasUserHistory = Boolean(isCurrentMonth && currentUser?.history && currentUser.history.length > 0);
   const hasData = currentMonth.hasData || hasUserHistory;
   const todayDate = new Date().getDate();
@@ -266,7 +267,7 @@ export default function HistoryScreen() {
     const photoSource =
       targetPhotoUri
         ? { uri: targetPhotoUri }
-        : require('@/assets/budi_avatar.jpg');
+        : require('@/assets/default_avatar.png');
 
     return (
       <View style={styles.screen}>

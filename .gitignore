@@ -1,33 +1,97 @@
 # =============================================================================
-# loginrek — root .gitignore
-# Tiap app punya .gitignore sendiri (loginrek-dashboard/, loginrek-mobile/).
+# loginrek — Comprehensive Root .gitignore
 # =============================================================================
 
-# Secrets / env
+# --- Secrets & Environment Variables ---
 .env
 .env.*
+.env.local
+.env*.local
 !.env.example
 
-# Dependencies & build
+# --- Dependencies ---
 node_modules/
-build/
-dist/
-coverage/
+.pnpm-store/
 
-# Logs
+# --- Build Outputs ---
+dist/
+build/
+dist-ssr/
+out/
+web-build/
+*.tsbuildinfo
+
+# --- Go Binaries & Cache ---
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.gocache/
+.gopath/
+bin/
+
+# --- Databases & Runtime Data ---
+*.sqlite
+*.sqlite3
+*.db
+/data/
+/tmp/
+tmp/
+
+# --- Runtime Uploads (Backend dev testing) ---
+**/public/uploads/attendances/*
+!**/public/uploads/attendances/.gitkeep
+**/public/uploads/avatars/*
+!**/public/uploads/avatars/.gitkeep
+!**/public/uploads/avatars/default_avatar.png
+
+# --- Mobile & Native Builds (Expo / React Native) ---
+.expo/
+*.apk
+*.aab
+/ios/
+/android/
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+
+# --- Temporary & Backup Files ---
+*.tmp
+*.temp
+*~
+*.bak
+*.swp
+*.swo
+_backup_*
+*.tar.gz
+*.zip
+
+# --- Logs ---
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# OS / editor
+# --- OS & Editor Files ---
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
-*.swp
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-# Docker (data lokal bila memakai bind mount)
-/data/
-
-# Claude Code / agent lokal
+# --- Agent / AI Settings ---
 .claude/settings.local.json
