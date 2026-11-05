@@ -27,7 +27,12 @@
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1"
       }
-    }
+    },
+    "production-internal": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    }    
   },
   "submit": { "production": {} }
 }
