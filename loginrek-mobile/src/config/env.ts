@@ -32,6 +32,8 @@ function devApiUrl(): string {
   return `http://192.168.110.103:${API_PORT}/api/v1`;
 }
 
+const PROD_API_URL = 'https://loginrek-api.bidtech.co.id/api/v1';
+
 const explicitUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
 // Fallback URL backend server lokal (port 3333)
@@ -39,7 +41,7 @@ const DEFAULT_LAN_API_URL = 'http://192.168.110.103:3333/api/v1';
 
 export const env = {
   appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? (__DEV__ ? 'development' : 'preview'),
-  apiUrl: explicitUrl || devApiUrl() || DEFAULT_LAN_API_URL,
+  apiUrl: explicitUrl || (__DEV__ ? devApiUrl() : PROD_API_URL),
   requestTimeoutMs: 15000,
 } as const;
 

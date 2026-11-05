@@ -5,10 +5,11 @@
   },
   "build": {
     "development": {
-      "developmentClient": true,
+      "developmentClient": false,
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1",
         "EXPO_PUBLIC_APP_ENV": "development"
       }
     },
