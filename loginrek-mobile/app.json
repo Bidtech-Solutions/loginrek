@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.loginrek",
+      "bundleIdentifier": "id.co.bidtech.loginrek",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "loginrek membutuhkan akses kamera untuk foto selfie absensi.",
@@ -18,7 +18,7 @@
       }
     },
     "android": {
-      "package": "com.loginrek",
+      "package": "id.co.bidtech.loginrek",
       "adaptiveIcon": {
         "backgroundColor": "#0E7C86",
         "foregroundImage": "./assets/android-icon-foreground.png",

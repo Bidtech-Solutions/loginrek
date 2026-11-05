@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage';
 import AttendancePage from './components/AttendancePage';
 import EmployeesPage from './components/EmployeesPage';
 import SettingsPage from './components/SettingsPage';
+import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import { 
   initialAdminData, 
   initialAttendanceRecords, 
@@ -220,12 +221,16 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
-  if (!authChecked) {
+  // /privacy publik: tidak perlu menunggu verifikasi sesi.
+  if (!authChecked && location.pathname !== '/privacy') {
     return <div style={{ padding: 32, color: '#475569' }}>Memeriksa sesi…</div>;
   }
 
   return (
     <Routes>
+      {/* Rute publik: tanpa login (Privacy Policy URL untuk App Store Connect) */}
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+
       <Route
         path="/login"
         element={

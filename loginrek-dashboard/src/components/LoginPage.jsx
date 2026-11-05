@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
+import { Link } from 'react-router';
 import { API_BASE } from '../config';
 
 export default function LoginPage({ onLoginSuccess }) {
@@ -109,7 +110,7 @@ export default function LoginPage({ onLoginSuccess }) {
           {/* Bottom Footer Info */}
           <div className="login-hero-footer">
             <span>Login Rek — Sistem Presensi Cerdas &amp; Terverifikasi</span>
-            <span className="version-tag">v3.4.1 Enterprise</span>
+            <span className="version-tag">v1.0 Otktober 2026</span>
           </div>
         </div>
       </div>
@@ -212,7 +213,9 @@ export default function LoginPage({ onLoginSuccess }) {
             </button>
           </form>
 
-
+          <div className="login-card-footer">
+            <Link to="/privacy" className="link-support">Kebijakan Privasi</Link>
+          </div>
         </div>
       </div>
     </div>
