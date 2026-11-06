@@ -100,3 +100,7 @@ ehthumbs.db
 # --- Agent / AI Settings ---
 .claude/settings.local.json
 package-lock.json*
+
+# Google service account keys
+driven-striker-*.json
+service-account.json
