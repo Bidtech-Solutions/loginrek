@@ -41,7 +41,7 @@ const DEFAULT_LAN_API_URL = 'http://192.168.110.103:3333/api/v1';
 
 export const env = {
   appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? (__DEV__ ? 'development' : 'preview'),
-  apiUrl: explicitUrl || (__DEV__ ? devApiUrl() : PROD_API_URL),
+  apiUrl: explicitUrl || PROD_API_URL,
   requestTimeoutMs: 15000,
 } as const;
 

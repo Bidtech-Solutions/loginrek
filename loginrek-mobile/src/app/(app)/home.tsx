@@ -4,6 +4,7 @@ import {
   Alert,
   Dimensions,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,8 +18,9 @@ import { router, useFocusEffect } from 'expo-router';
 
 import { attendanceApi, setAccessToken } from '@/lib/api';
 import { tokenStorage } from '@/lib/token-storage';
-import { userStore, UserAccount } from '@/lib/user-store';
+import { userStore, UserAccount, AttendanceRecord } from '@/lib/user-store';
 import { syncStore } from '@/lib/sync-store';
+import { getMediaUrl } from '@/config/env';
 
 export type AttendanceStatus =
   | 'holiday'    // Hari Libur
@@ -132,6 +134,7 @@ export default function HomeScreen() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [currentTime, setCurrentTime] = useState(() => formatTime24(new Date()));
   const [todayCheckIn, setTodayCheckIn] = useState<{ time: string; isLate: boolean } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   // Background Auto-Sync: sinkronkan secara otomatis dan senyap di latar belakang
   const triggerAutoSync = useCallback(async () => {
     try {
@@ -144,58 +147,150 @@ export default function HomeScreen() {
     } catch {}
   }, []);
 
+  const loadData = useCallback(async () => {
+    let u = await userStore.getCurrentUser();
+    if (!u) {
+      router.replace('/(auth)/login');
+      return;
+    }
+    setCurrentUser(u);
+    setTodayCheckIn(u.todayCheckIn ?? null);
+
+    try {
+      const res = await attendanceApi.getToday();
+      if (res?.data) {
+        if (res.data.hasAttended && res.data.attendance) {
+          const att = res.data.attendance;
+          setTodayCheckIn({ time: att.clockInTime, isLate: att.isLate });
+          if (u) {
+            // Sinkronkan ke riwayat presensi lokal agar langsung muncul di HP ini
+            const currentHistory = u.history || [];
+            const alreadyInHistory = currentHistory.some(
+              (h) => h.time.includes(att.clockInTime) || (h.id && h.id === String(att.id))
+            );
+
+            let updatedHistory = currentHistory;
+            if (!alreadyInHistory) {
+              const now = new Date();
+              const dateNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+              const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+              const dayName = dateNames[now.getDay()];
+              const dateNum = now.getDate();
+              const monthName = monthNames[now.getMonth()];
+              const year = now.getFullYear();
+
+              const newRecord: AttendanceRecord = {
+                id: String(att.id || Date.now()),
+                day: `Hari ini, ${dayName} ${dateNum} ${monthName} ${year}`,
+                time: `Jam Masuk: ${att.clockInTime} WIB`,
+                status: att.isLate ? 'Terlambat' : 'Tepat Waktu',
+                photoUri: att.photoPath ? getMediaUrl(att.photoPath) ?? undefined : undefined,
+              };
+              updatedHistory = [newRecord, ...currentHistory.slice(0, 4)];
+            }
+
+            const synced: UserAccount = {
+              ...u,
+              todayCheckIn: {
+                date: res.data.today,
+                time: att.clockInTime,
+                isLate: att.isLate,
+                photoUri: att.photoPath ? getMediaUrl(att.photoPath) ?? undefined : u.todayCheckIn?.photoUri,
+              },
+              history: updatedHistory,
+              onTimeCount: !att.isLate ? Math.max(u.onTimeCount, 1) : u.onTimeCount,
+              lateCount: att.isLate ? Math.max(u.lateCount, 1) : u.lateCount,
+            };
+            await userStore.setCurrentUser(synced);
+            setCurrentUser(synced);
+            u = synced;
+          }
+        } else if (!res.data.hasAttended) {
+          const pendingCount = await syncStore.getPendingCount();
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const localHasCheckedInToday = u?.todayCheckIn?.date === todayStr;
+
+          // Jangan pernah reset jika user sudah absen hari ini di HP atau ada antrean pending
+          if (pendingCount === 0 && !localHasCheckedInToday) {
+            setTodayCheckIn(null);
+            if (u && u.todayCheckIn) {
+              const cleared = { ...u, todayCheckIn: null };
+              await userStore.setCurrentUser(cleared);
+              setCurrentUser(cleared);
+              u = cleared;
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // Sinkronkan riwayat presensi terbaru dari server
+    try {
+      const histRes = await attendanceApi.myHistory({ limit: 10 });
+      if (histRes?.data && histRes.data.length > 0 && u) {
+        const serverRecords: AttendanceRecord[] = histRes.data.map((item) => {
+          const parts = item.date.split('-');
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const dt = new Date(y, m, d);
+
+          const dateNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+          const dayName = dateNames[dt.getDay()];
+          const monthName = monthNames[m] || '';
+
+          const now = new Date();
+          const isToday = now.getFullYear() === y && now.getMonth() === m && now.getDate() === d;
+          const day = isToday
+            ? `Hari ini, ${dayName} ${d} ${monthName} ${y}`
+            : `${dayName}, ${d} ${monthName} ${y}`;
+
+          const time = item.clockInTime.startsWith('Jam Masuk:')
+            ? item.clockInTime
+            : `Jam Masuk: ${item.clockInTime} WIB`;
+
+          return {
+            id: String(item.id),
+            day,
+            time,
+            status: (item.isLate ? 'Terlambat' : 'Tepat Waktu') as 'Tepat Waktu' | 'Terlambat',
+            photoUri: item.photoPath ? (getMediaUrl(item.photoPath) ?? undefined) : undefined,
+          };
+        });
+
+        const onTimeCount = histRes.data.filter((a) => !a.isLate).length;
+        const lateCount = histRes.data.filter((a) => a.isLate).length;
+
+        const synced: UserAccount = {
+          ...u,
+          history: serverRecords.slice(0, 5),
+          onTimeCount: Math.max(u.onTimeCount, onTimeCount),
+          lateCount: Math.max(u.lateCount, lateCount),
+        };
+        await userStore.setCurrentUser(synced);
+        setCurrentUser(synced);
+      }
+    } catch {}
+
+    await triggerAutoSync();
+  }, [triggerAutoSync]);
+
   // Ambil profil user dan status check-in terbaru setiap kali layar beranda aktif (fokus)
   useFocusEffect(
     useCallback(() => {
-      async function refreshUser() {
-        let u = await userStore.getCurrentUser();
-        if (u) {
-          setCurrentUser(u);
-          setTodayCheckIn(u.todayCheckIn ?? null);
-        }
-
-        try {
-          const res = await attendanceApi.getToday();
-          if (res?.data) {
-            if (res.data.hasAttended && res.data.attendance) {
-              const att = res.data.attendance;
-              setTodayCheckIn({ time: att.clockInTime, isLate: att.isLate });
-              if (u) {
-                const synced = {
-                  ...u,
-                  todayCheckIn: {
-                    date: res.data.today,
-                    time: att.clockInTime,
-                    isLate: att.isLate,
-                    photoUri: att.photoPath ?? u.todayCheckIn?.photoUri,
-                  },
-                };
-                await userStore.setCurrentUser(synced);
-                setCurrentUser(synced);
-              }
-            } else if (!res.data.hasAttended) {
-              const pendingCount = await syncStore.getPendingCount();
-              const todayStr = new Date().toISOString().slice(0, 10);
-              const localHasCheckedInToday = u?.todayCheckIn?.date === todayStr;
-
-              // Jangan pernah reset jika user sudah absen hari ini di HP atau ada antrean pending
-              if (pendingCount === 0 && !localHasCheckedInToday) {
-                setTodayCheckIn(null);
-                if (u && u.todayCheckIn) {
-                  const cleared = { ...u, todayCheckIn: null };
-                  await userStore.setCurrentUser(cleared);
-                  setCurrentUser(cleared);
-                }
-              }
-            }
-          }
-        } catch {}
-
-        await triggerAutoSync();
-      }
-      refreshUser();
-    }, [triggerAutoSync])
+      loadData();
+    }, [loadData])
   );
+
+  // Tarik ke bawah untuk refresh (Pull-to-Refresh)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setCurrentDate(new Date());
+    setCurrentTime(formatTime24(new Date()));
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
   // Pantau jaringan: jika ada internet (Wi-Fi / kuota data), otomatis sync tanpa perlu tombol
   useEffect(() => {
@@ -276,12 +371,21 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#0E7C86']}
+            tintColor="#0E7C86"
+            progressViewOffset={insets.top + 10}
+          />
+        }
       >
         {/* Top Header: Profil Singkat & Jam Realtime */}
         <View style={styles.topHeader}>
           <View>
-            <Text style={styles.userName}>{currentUser?.fullName ?? 'Timmy Kurniawan'}</Text>
-            <Text style={styles.userRole}>{currentUser?.role ?? 'Software Engineer'}</Text>
+            <Text style={styles.userName}>{currentUser?.fullName ?? 'Karyawan'}</Text>
+            <Text style={styles.userRole}>{currentUser?.role ?? 'Karyawan'}</Text>
           </View>
           <View style={styles.clockPill}>
             <Feather name="clock" size={13} color="#047857" style={styles.clockIcon} />

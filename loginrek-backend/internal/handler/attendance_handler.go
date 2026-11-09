@@ -68,6 +68,76 @@ func (h *AttendanceHandler) Today(c *gin.Context) {
 	})
 }
 
+// MyHistory mengambil daftar riwayat presensi khusus milik karyawan yang sedang login
+func (h *AttendanceHandler) MyHistory(c *gin.Context) {
+	val, exists := c.Get("currentUser")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"errors": []gin.H{{"message": "Unauthorized"}}})
+		return
+	}
+	user := val.(domain.User)
+
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "100")
+	all := c.Query("all") == "true"
+	monthFilter := c.Query("month") // format opsional "YYYY-MM"
+	dateFilter := c.Query("date")   // format opsional "YYYY-MM-DD"
+
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(limitStr)
+	if limit < 1 {
+		limit = 100
+	}
+	if all {
+		limit = 500
+	}
+
+	query := h.db.Model(&domain.Attendance{}).
+		Where("user_id = ?", user.ID).
+		Preload("User").
+		Order("date desc, id desc")
+
+	if monthFilter != "" {
+		query = query.Where("date LIKE ?", monthFilter+"%")
+	}
+	if dateFilter != "" {
+		query = query.Where("date = ?", dateFilter)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	offset := (page - 1) * limit
+	var records []domain.Attendance
+	if err := query.Offset(offset).Limit(limit).Find(&records).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Gagal mengambil data riwayat presensi."})
+		return
+	}
+
+	dataList := make([]domain.AttendanceItemResponse, 0, len(records))
+	for _, r := range records {
+		dataList = append(dataList, r.ToResponse())
+	}
+
+	lastPage := int(math.Ceil(float64(total) / float64(limit)))
+	if lastPage < 1 {
+		lastPage = 1
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"meta": gin.H{
+			"total":       total,
+			"perPage":     limit,
+			"currentPage": page,
+			"lastPage":    lastPage,
+		},
+		"data": dataList,
+	})
+}
+
 type CheckInRequest struct {
 	ClockInTime    string   `json:"clockInTime" binding:"required"`
 	IsLate         bool     `json:"isLate"`

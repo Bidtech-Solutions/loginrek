@@ -96,9 +96,12 @@ export default function AttendanceScreen() {
   useEffect(() => {
     async function init() {
       let u = await userStore.getCurrentUser();
-      if (u) {
-        try {
-          const todayRes = await attendanceApi.getToday();
+      if (!u) {
+        router.replace('/(auth)/login');
+        return;
+      }
+      try {
+        const todayRes = await attendanceApi.getToday();
           if (todayRes?.data && !todayRes.data.hasAttended) {
             const pending = await syncStore.getPendingCount();
             const todayStr = new Date().toISOString().slice(0, 10);
@@ -119,7 +122,6 @@ export default function AttendanceScreen() {
             ]
           );
         }
-      }
 
       if (Platform.OS !== 'web') {
         try {
@@ -331,11 +333,26 @@ export default function AttendanceScreen() {
     }
 
     setIsCapturing(true);
+
+    // Efek shutter flash kamera instan (respon visual langsung saat tombol ditekan)
+    Animated.sequence([
+      Animated.timing(flashAnim, {
+        toValue: 0.9,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     try {
       let photoUri: string | null = null;
       if (Platform.OS !== 'web' && cameraRef.current?.takePictureAsync) {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.18,
+          quality: 0.35,
           mirror: false,
           base64: true,
         });
@@ -361,20 +378,6 @@ export default function AttendanceScreen() {
       const m = String(now.getMinutes()).padStart(2, '0');
       const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 0);
       const timeFormatted = `${h}.${m}`;
-
-      // Efek shutter flash kamera (120ms mikro-animasi native yang sangat ringan)
-      Animated.sequence([
-        Animated.timing(flashAnim, {
-          toValue: 0.9,
-          duration: 60,
-          useNativeDriver: true,
-        }),
-        Animated.timing(flashAnim, {
-          toValue: 0,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]).start();
 
       previewFadeAnim.setValue(0);
       previewSlideAnim.setValue(20);
@@ -530,8 +533,8 @@ export default function AttendanceScreen() {
             <Feather name="chevron-left" size={26} color="#0F1F24" />
           </Pressable>
           <View>
-            <Text style={styles.userName}>{currentUser?.fullName ?? 'Timmy Kurniawan'}</Text>
-            <Text style={styles.userRole}>{currentUser?.role ?? 'Software Engineer'}</Text>
+            <Text style={styles.userName}>{currentUser?.fullName ?? 'Karyawan'}</Text>
+            <Text style={styles.userRole}>{currentUser?.role ?? 'Karyawan'}</Text>
           </View>
         </View>
         <View style={styles.clockPill}>
@@ -827,6 +830,7 @@ export default function AttendanceScreen() {
               style={styles.cameraBackground}
               facing="front"
               mirror={false}
+              pictureSize="1280x720"
             />
           ) : cameraStream ? (
             React.createElement('video', {

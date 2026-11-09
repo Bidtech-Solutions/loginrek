@@ -116,6 +116,20 @@ export const attendanceApi = {
       };
     }>('/attendances/today'),
 
+  myHistory: (params?: { page?: number; limit?: number; all?: boolean; month?: string; date?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.append('page', String(params.page));
+    if (params?.limit) q.append('limit', String(params.limit));
+    if (params?.all) q.append('all', 'true');
+    if (params?.month) q.append('month', params.month);
+    if (params?.date) q.append('date', params.date);
+    const qs = q.toString();
+    return api<{
+      data: AttendanceResponse[];
+      meta?: { total: number; perPage: number; currentPage: number; lastPage: number };
+    }>(`/attendances/my${qs ? `?${qs}` : ''}`);
+  },
+
   checkIn: (payload: {
     clockInTime: string;
     isLate?: boolean;

@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,7 +40,7 @@ export default function ProfileScreen() {
   const [currentTime, setCurrentTime] = useState(() => formatTime24(new Date()));
 
   // Form state
-  const [fullName, setFullName] = useState('Timmy Kurniawan');
+  const [fullName, setFullName] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -47,32 +48,44 @@ export default function ProfileScreen() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadUser = useCallback(async () => {
+    const u = await userStore.getCurrentUser();
+    if (!u) {
+      router.replace('/(auth)/login');
+      return;
+    }
+    setCurrentUser(u);
+    setFullName(u.fullName);
+    setImageError(false);
+
+    try {
+      const res = await authApi.me();
+      if (res?.data?.avatarUrl) {
+        if (u && u.avatarUrl !== res.data.avatarUrl) {
+          const updated = { ...u, avatarUrl: res.data.avatarUrl };
+          await userStore.setCurrentUser(updated);
+          setCurrentUser(updated);
+        }
+      }
+    } catch {}
+  }, []);
 
   // Ambil data user aktif saat ini (re-sync setiap layar profil fokus)
   useFocusEffect(
     useCallback(() => {
-      async function loadUser() {
-        const u = await userStore.getCurrentUser();
-        if (u) {
-          setCurrentUser(u);
-          setFullName(u.fullName);
-          setImageError(false);
-        }
-
-        try {
-          const res = await authApi.me();
-          if (res?.data?.avatarUrl) {
-            if (u && u.avatarUrl !== res.data.avatarUrl) {
-              const updated = { ...u, avatarUrl: res.data.avatarUrl };
-              await userStore.setCurrentUser(updated);
-              setCurrentUser(updated);
-            }
-          }
-        } catch {}
-      }
       loadUser();
-    }, [])
+    }, [loadUser])
   );
+
+  // Tarik ke bawah untuk refresh (Pull-to-Refresh)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setCurrentTime(formatTime24(new Date()));
+    await loadUser();
+    setRefreshing(false);
+  }, [loadUser]);
 
   // Jam realtime berdetak setiap detik
   useEffect(() => {
@@ -205,6 +218,9 @@ export default function ProfileScreen() {
     await tokenStorage.clear();
     await permissionStore.resetPermissions();
     setAccessToken(null);
+    if (router.canDismiss()) {
+      router.dismissAll();
+    }
     router.replace('/(auth)/login');
   }
 
@@ -224,12 +240,21 @@ export default function ProfileScreen() {
         <ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#0E7C86']}
+              tintColor="#0E7C86"
+              progressViewOffset={insets.top + 10}
+            />
+          }
         >
           {/* Top Header: Profil Singkat & Jam Realtime */}
           <View style={styles.topHeader}>
             <View>
-              <Text style={styles.userName}>{fullName}</Text>
-              <Text style={styles.userRole}>{currentUser?.role ?? 'Software Engineer'}</Text>
+              <Text style={styles.userName}>{fullName || currentUser?.fullName || 'Karyawan'}</Text>
+              <Text style={styles.userRole}>{currentUser?.role ?? 'Karyawan'}</Text>
             </View>
             <View style={styles.clockPill}>
               <Feather name="clock" size={13} color="#047857" style={styles.clockIcon} />
@@ -292,7 +317,7 @@ export default function ProfileScreen() {
             {/* Input Nama Lengkap (Read-only) */}
             <Text style={styles.inputLabel}>Nama Lengkap</Text>
             <View style={styles.inputBoxDisabled}>
-              <Text style={styles.textInputDisabled}>{fullName}</Text>
+              <Text style={styles.textInputDisabled}>{fullName || currentUser?.fullName || 'Karyawan'}</Text>
               <Feather name="lock" size={14} color="#94A3B8" />
             </View>
 

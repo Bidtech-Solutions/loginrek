@@ -3,6 +3,7 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +14,9 @@ import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 
-import { userStore, UserAccount } from '@/lib/user-store';
+import { userStore, UserAccount, AttendanceRecord } from '@/lib/user-store';
+import { attendanceApi, AttendanceResponse } from '@/lib/api';
+import { getMediaUrl } from '@/config/env';
 
 // Format jam digital realtime 24 jam
 function formatTime24(date: Date): string {
@@ -77,6 +80,43 @@ const MONTHS_DATA: MonthConfig[] = [
 const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 const INITIAL_INDEX = Math.max(0, Math.min(11, new Date().getMonth()));
 
+// Helper memformat presensi dari backend API ke format tampilan riwayat
+function formatApiAttendance(att: AttendanceResponse): { item: ActivityItem; monthId: string; dayNum: number } {
+  const parts = att.date.split('-');
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1;
+  const d = parseInt(parts[2], 10);
+  const dt = new Date(y, m, d);
+
+  const dateNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dayName = dateNames[dt.getDay()];
+  const monthName = monthNames[m] || '';
+
+  const now = new Date();
+  const isToday = now.getFullYear() === y && now.getMonth() === m && now.getDate() === d;
+  const day = isToday
+    ? `Hari ini, ${dayName} ${d} ${monthName} ${y}`
+    : `${dayName}, ${d} ${monthName} ${y}`;
+
+  const timeFormatted = att.clockInTime.startsWith('Jam Masuk:')
+    ? att.clockInTime
+    : `Jam Masuk: ${att.clockInTime} WIB`;
+
+  return {
+    item: {
+      id: `server-${att.id}`,
+      day,
+      time: timeFormatted,
+      status: att.status || (att.isLate ? 'Terlambat' : 'Tepat Waktu'),
+      type: att.isLate ? 'late' : 'on_time',
+      photoUri: att.photoPath ? (getMediaUrl(att.photoPath) ?? undefined) : undefined,
+    },
+    monthId: `${parts[0]}-${parts[1]}`,
+    dayNum: d,
+  };
+}
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
@@ -85,19 +125,104 @@ export default function HistoryScreen() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedDateFilter, setSelectedDateFilter] = useState<number | null>(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState<ActivityItem | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [serverHistory, setServerHistory] = useState<AttendanceResponse[]>([]);
+
+  const loadUser = useCallback(async () => {
+    let u = await userStore.getCurrentUser();
+    if (!u) {
+      router.replace('/(auth)/login');
+      return;
+    }
+
+    // 1. Ambil seluruh riwayat presensi user dari server (terisolasi per akun)
+    try {
+      const historyRes = await attendanceApi.myHistory({ all: true });
+      if (historyRes?.data) {
+        setServerHistory(historyRes.data);
+
+        if (historyRes.data.length > 0) {
+          const recentRecords: AttendanceRecord[] = historyRes.data.slice(0, 5).map((att) => {
+            const formatted = formatApiAttendance(att);
+            return {
+              id: String(att.id),
+              day: formatted.item.day,
+              time: formatted.item.time,
+              status: (att.isLate ? 'Terlambat' : 'Tepat Waktu') as 'Tepat Waktu' | 'Terlambat',
+              photoUri: formatted.item.photoUri,
+            };
+          });
+
+          const onTimeCount = historyRes.data.filter((a) => !a.isLate).length;
+          const lateCount = historyRes.data.filter((a) => a.isLate).length;
+
+          u = {
+            ...u,
+            history: recentRecords,
+            onTimeCount,
+            lateCount,
+          };
+          await userStore.setCurrentUser(u);
+        }
+      }
+    } catch {}
+
+    // 2. Ambil status presensi hari ini
+    try {
+      const res = await attendanceApi.getToday();
+      if (res?.data?.hasAttended && res.data.attendance) {
+        const att = res.data.attendance;
+        const currentHistory = u.history || [];
+        const alreadyInHistory = currentHistory.some(
+          (h) => h.time.includes(att.clockInTime) || (h.id && h.id === String(att.id))
+        );
+
+        let updatedHistory = currentHistory;
+        if (!alreadyInHistory) {
+          const formatted = formatApiAttendance(att);
+          const newRecord: AttendanceRecord = {
+            id: String(att.id || Date.now()),
+            day: formatted.item.day,
+            time: formatted.item.time,
+            status: att.isLate ? 'Terlambat' : 'Tepat Waktu',
+            photoUri: att.photoPath ? (getMediaUrl(att.photoPath) ?? undefined) : undefined,
+          };
+          updatedHistory = [newRecord, ...currentHistory.slice(0, 4)];
+        }
+
+        u = {
+          ...u,
+          todayCheckIn: {
+            date: res.data.today,
+            time: att.clockInTime,
+            isLate: att.isLate,
+            photoUri: att.photoPath ? (getMediaUrl(att.photoPath) ?? undefined) : u.todayCheckIn?.photoUri,
+          },
+          history: updatedHistory,
+          onTimeCount: !att.isLate ? Math.max(u.onTimeCount, 1) : u.onTimeCount,
+          lateCount: att.isLate ? Math.max(u.lateCount, 1) : u.lateCount,
+        };
+        await userStore.setCurrentUser(u);
+      }
+    } catch {}
+
+    setCurrentUser(u);
+  }, []);
 
   // Ambil user yang sedang aktif login setiap kali halaman riwayat aktif
   useFocusEffect(
     useCallback(() => {
-      async function loadUser() {
-        const u = await userStore.getCurrentUser();
-        if (u) {
-          setCurrentUser(u);
-        }
-      }
       loadUser();
-    }, [])
+    }, [loadUser])
   );
+
+  // Tarik ke bawah untuk refresh (Pull-to-Refresh)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setCurrentTime(formatTime24(new Date()));
+    await loadUser();
+    setRefreshing(false);
+  }, [loadUser]);
 
   // Jam realtime berdetak setiap detik
   useEffect(() => {
@@ -110,8 +235,16 @@ export default function HistoryScreen() {
 
   const currentMonth = MONTHS_DATA[selectedMonthIdx];
   const isCurrentMonth = currentMonth.id === currentYearMonth;
+
+  // Filter aktivitas presensi untuk bulan yang sedang dipilih
+  const currentMonthServerActivities = useMemo(() => {
+    return serverHistory
+      .filter((att) => att.date.startsWith(currentMonth.id))
+      .map((att) => formatApiAttendance(att).item);
+  }, [serverHistory, currentMonth.id]);
+
   const hasUserHistory = Boolean(isCurrentMonth && currentUser?.history && currentUser.history.length > 0);
-  const hasData = currentMonth.hasData || hasUserHistory;
+  const hasData = currentMonth.hasData || currentMonthServerActivities.length > 0 || hasUserHistory;
   const todayDate = new Date().getDate();
 
   // Navigasi bulan
@@ -137,39 +270,45 @@ export default function HistoryScreen() {
   }
 
   // Rekap angka kehadiran
-  const hadirCount = hasData
-    ? isCurrentMonth && currentUser
-      ? currentUser.onTimeCount
-      : currentMonth.hadir
-    : 0;
+  const hadirCount = currentMonthServerActivities.length > 0
+    ? currentMonthServerActivities.filter((a) => a.type === 'on_time').length
+    : hasData
+      ? isCurrentMonth && currentUser
+        ? currentUser.onTimeCount
+        : currentMonth.hadir
+      : 0;
 
-  const terlambatCount = hasData
-    ? isCurrentMonth && currentUser
-      ? currentUser.lateCount
-      : currentMonth.terlambat
-    : 0;
+  const terlambatCount = currentMonthServerActivities.length > 0
+    ? currentMonthServerActivities.filter((a) => a.type === 'late').length
+    : hasData
+      ? isCurrentMonth && currentUser
+        ? currentUser.lateCount
+        : currentMonth.terlambat
+      : 0;
 
   const tidakHadirCount = hasData ? currentMonth.tidakHadir : 0;
 
   // Gabungkan aktivitas presensi dinamis bila user baru saja melakukan presensi
   const activitiesToDisplay: ActivityItem[] =
-    isCurrentMonth && currentUser?.history && currentUser.history.length > 0
-      ? [
-          ...currentUser.history.map((h) => ({
-            id: `user-${h.id}`,
-            day: h.day,
-            time: h.time.startsWith('Jam Masuk:') ? h.time : `Jam Masuk: ${h.time}`,
-            status: h.status,
-            type: (h.status === 'Tepat Waktu' ? 'on_time' : 'late') as 'on_time' | 'late',
-            photoUri:
-              h.photoUri ||
-              (h.day.includes('Hari ini') ? currentUser.todayCheckIn?.photoUri : undefined),
-          })),
-          ...currentMonth.activities.filter(
-            (act) => !currentUser.history.some((h) => h.day === act.day)
-          ),
-        ]
-      : currentMonth.activities;
+    currentMonthServerActivities.length > 0
+      ? currentMonthServerActivities
+      : isCurrentMonth && currentUser?.history && currentUser.history.length > 0
+        ? [
+            ...currentUser.history.map((h) => ({
+              id: `user-${h.id}`,
+              day: h.day,
+              time: h.time.startsWith('Jam Masuk:') ? h.time : `Jam Masuk: ${h.time}`,
+              status: h.status,
+              type: (h.status === 'Tepat Waktu' ? 'on_time' : 'late') as 'on_time' | 'late',
+              photoUri:
+                h.photoUri ||
+                (h.day.includes('Hari ini') ? currentUser.todayCheckIn?.photoUri : undefined),
+            })),
+            ...currentMonth.activities.filter(
+              (act) => !currentUser.history.some((h) => h.day === act.day)
+            ),
+          ]
+        : currentMonth.activities;
 
   // Map aktivitas ke nomor tanggal (1..31) untuk ditampilkan pada kalender
   const attendanceMap = useMemo(() => {
@@ -276,8 +415,8 @@ export default function HistoryScreen() {
         {/* Top Header Bersih: Nama, Role, & Jam Digital */}
         <View style={[styles.detailTopHeader, { paddingTop: insets.top + 10 }]}>
           <View>
-            <Text style={styles.userName}>{currentUser?.fullName ?? 'Timmy Kurniawan'}</Text>
-            <Text style={styles.userRole}>{currentUser?.role ?? 'Software Engineer'}</Text>
+            <Text style={styles.userName}>{currentUser?.fullName ?? 'Karyawan'}</Text>
+            <Text style={styles.userRole}>{currentUser?.role ?? 'Karyawan'}</Text>
           </View>
           <View style={styles.clockPill}>
             <Feather name="clock" size={13} color="#047857" style={styles.clockIcon} />
@@ -371,12 +510,21 @@ export default function HistoryScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#0E7C86']}
+            tintColor="#0E7C86"
+            progressViewOffset={insets.top + 10}
+          />
+        }
       >
         {/* Top Header: Profil & Jam Realtime */}
         <View style={styles.topHeader}>
           <View>
-            <Text style={styles.userName}>{currentUser?.fullName ?? 'Budi Santoso'}</Text>
-            <Text style={styles.userRole}>{currentUser?.role ?? 'Software Engineer'}</Text>
+            <Text style={styles.userName}>{currentUser?.fullName ?? 'Karyawan'}</Text>
+            <Text style={styles.userRole}>{currentUser?.role ?? 'Karyawan'}</Text>
           </View>
           <View style={styles.clockPill}>
             <Feather name="clock" size={13} color="#047857" style={styles.clockIcon} />

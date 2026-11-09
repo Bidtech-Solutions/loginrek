@@ -20,6 +20,9 @@ export default function RootLayout() {
       setAccessToken(null);
       void tokenStorage.clear();
       void userStore.clearCurrentUser();
+      if (router.canDismiss()) {
+        router.dismissAll();
+      }
       router.replace('/(auth)/login');
     });
     return () => setUnauthorizedHandler(null);
@@ -36,7 +39,12 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen
+          name="(auth)/login"
+          options={{
+            gestureEnabled: false,
+          }}
+        />
         <Stack.Screen
           name="(app)/attendance"
           options={{

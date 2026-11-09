@@ -18,7 +18,7 @@
       "android": { "buildType": "apk" },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "EXPO_PUBLIC_API_URL": "http://192.168.110.91:3333/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1"
       }
     },
     "production": {

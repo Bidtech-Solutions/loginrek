@@ -10,16 +10,16 @@ export interface OfficeConfig {
   radiusMeters: number;
 }
 
-// Koordinat resmi Ruko Kantor PIPOSMART (Batam Kota): https://maps.app.goo.gl/LFddLRTfyAuoyaET7 (Plus Code: 434G+94 Belian, Kota Batam)
+// Koordinat resmi Kantor PIPOSMART (Batam Kota): https://maps.app.goo.gl/LFddLRTfyAuoyaET7 (Plus Code: 434G+94 Belian, Kota Batam)
 export const DEFAULT_OFFICE: OfficeConfig = {
   name: 'Kantor Piposmart',
   address: 'Belian, Kec. Batam Kota, Kota Batam, Kepulauan Riau',
   latitude: 1.105925,
   longitude: 104.075342,
-  radiusMeters: 25, // Presisi khusus ruko Piposmart (25 meter)
+  radiusMeters: 100, // Toleransi radius kantor (100 meter untuk akurasi sinyal di dalam ruangan/gedung)
 };
 
-const OFFICE_STORAGE_KEY = 'loginrek.officeConfig.v2';
+const OFFICE_STORAGE_KEY = 'loginrek.officeConfig.v3';
 
 /**
  * Menghitung jarak antara dua koordinat GPS dalam satuan meter menggunakan rumus Haversine.
@@ -90,7 +90,7 @@ export const locationStore = {
 
       if (Platform.OS !== 'web') {
         const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
         });
         coords = {
           latitude: location.coords.latitude,

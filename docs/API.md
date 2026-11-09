@@ -54,6 +54,7 @@ hanya dapat memakai mobile; dashboard menolaknya.
 | POST | `/auth/logout` | 🔒 | logout (stateless; token tetap berlaku sampai kedaluwarsa) |
 | PUT | `/auth/profile` | 🔒 | ubah nama, avatar, atau kata sandi **milik pemilik token** |
 | GET | `/attendances/today` | 🔒 | status presensi hari ini |
+| GET | `/attendances/my` | 🔒 | riwayat presensi milik akun aktif |
 | POST | `/attendances/check-in` | 🔒 | presensi masuk |
 | GET | `/attendances` | 👑 | rekap presensi semua karyawan |
 | GET | `/employees` | 👑 | daftar karyawan (tanpa akun admin) |
@@ -93,6 +94,34 @@ yang benar (min. 6 karakter untuk yang baru) — salah → 400. `avatarUrl` base
             "serverTime": "08:05:12", "today": "2026-11-04" } }
 ```
 `attendance` bernilai `null` bila belum absen.
+
+### `GET /attendances/my` 🔒
+Mengambil seluruh riwayat presensi milik akun aktif (terisolasi per user).
+Query: `page` (default 1), `limit` (default 100), `all=true` (limit 500), `month=YYYY-MM`, `date=YYYY-MM-DD`.
+Urut tanggal menurun (`date desc, id desc`).
+200:
+```json
+{
+  "meta": { "total": 12, "perPage": 100, "currentPage": 1, "lastPage": 1 },
+  "data": [
+    {
+      "id": 1,
+      "userId": 2,
+      "date": "2026-11-09",
+      "clockInTime": "08.05 WIB",
+      "status": "Tepat Waktu",
+      "isLate": false,
+      "photoPath": "attendances/2026-11/....webp",
+      "latitude": 1.105925,
+      "longitude": 104.075342,
+      "distanceMeters": 15,
+      "officeName": "Kantor Piposmart",
+      "isOfflineSync": false,
+      "createdAt": "..."
+    }
+  ]
+}
+```
 
 ### `POST /attendances/check-in` 🔒
 ```json

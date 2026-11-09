@@ -167,6 +167,8 @@ func TestAccessControl(t *testing.T) {
 		{"me karyawan", "GET", "/api/v1/auth/me", staffTok, 200},
 		{"today karyawan", "GET", "/api/v1/attendances/today", staffTok, 200},
 		{"today tanpa token", "GET", "/api/v1/attendances/today", "", 401},
+		{"my attendances karyawan", "GET", "/api/v1/attendances/my", staffTok, 200},
+		{"my attendances tanpa token", "GET", "/api/v1/attendances/my", "", 401},
 		{"delete karyawan oleh karyawan", "DELETE", "/api/v1/employees/1", staffTok, 403},
 		{"create karyawan oleh karyawan", "POST", "/api/v1/employees", staffTok, 403},
 	}
@@ -303,5 +305,44 @@ func TestInitDB_PostgresDownFallbackOnlyOutsideProduction(t *testing.T) {
 	db.Model(&domain.User{}).Count(&n)
 	if n == 0 {
 		t.Fatal("seeder harus berjalan pada database fallback")
+	}
+}
+
+func TestAttendance_MyHistoryIsolation(t *testing.T) {
+	e := newEnv(t)
+	staffTok := e.login(t, staffEmail, staffPassword)
+
+	var staff domain.User
+	e.db.Where("email = ?", staffEmail).First(&staff)
+	var admin domain.User
+	e.db.Where("email = ?", adminEmail).First(&admin)
+
+	// Buat data presensi untuk staff dan admin
+	e.db.Create(&domain.Attendance{
+		UserID:      staff.ID,
+		Date:        "2026-11-01",
+		ClockInTime: "08:00 WIB",
+		Status:      "Tepat Waktu",
+	})
+	e.db.Create(&domain.Attendance{
+		UserID:      admin.ID,
+		Date:        "2026-11-01",
+		ClockInTime: "08:15 WIB",
+		Status:      "Terlambat",
+		IsLate:      true,
+	})
+
+	// Staff hanya boleh melihat presensinya sendiri
+	code, out := e.do(t, "GET", "/api/v1/attendances/my", staffTok, nil)
+	if code != 200 {
+		t.Fatalf("my history staff harus 200, dapat %d", code)
+	}
+	items := out["data"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("staff harus memiliki tepat 1 riwayat, dapat %d", len(items))
+	}
+	item := items[0].(map[string]any)
+	if item["userId"].(float64) != float64(staff.ID) {
+		t.Fatalf("userId pada riwayat harus milik staff (%d), dapat %v", staff.ID, item["userId"])
 	}
 }

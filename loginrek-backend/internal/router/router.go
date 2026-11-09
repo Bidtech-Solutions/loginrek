@@ -63,6 +63,7 @@ func New(cfg *config.Config, db *gorm.DB, store storage.StorageService) *gin.Eng
 		authed.POST("/auth/logout", authHandler.Logout)
 		authed.PUT("/auth/profile", authHandler.UpdateProfile)
 		authed.GET("/attendances/today", attendanceHandler.Today)
+		authed.GET("/attendances/my", attendanceHandler.MyHistory)
 		authed.POST("/attendances/check-in", attendanceHandler.CheckIn)
 	}
 
