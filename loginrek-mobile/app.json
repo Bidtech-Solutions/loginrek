@@ -3,13 +3,14 @@
     "name": "loginrek",
     "slug": "loginrek",
     "scheme": "loginrek",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "id.co.bidtech.loginrek",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "loginrek membutuhkan akses kamera untuk foto selfie absensi.",
@@ -19,6 +20,7 @@
     },
     "android": {
       "package": "id.co.bidtech.loginrek",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#0E7C86",
         "foregroundImage": "./assets/android-icon-foreground.png",
