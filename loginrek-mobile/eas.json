@@ -7,32 +7,44 @@
     "development": {
       "developmentClient": false,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://api.sapakerja.com/api/v1",
         "EXPO_PUBLIC_APP_ENV": "development"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1"
-      }
+        "EXPO_PUBLIC_API_URL": "https://api.sapakerja.com/api/v1"
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://loginrek-api.bidtech.co.id/api/v1"
-      }
+        "EXPO_PUBLIC_API_URL": "https://api.sapakerja.com/api/v1"
+      },
+      "channel": "production"
     },
     "production-internal": {
       "extends": "production",
       "distribution": "internal",
-      "android": { "buildType": "apk" }
-    }    
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "production-internal"
+    }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }

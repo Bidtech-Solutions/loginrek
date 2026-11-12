@@ -672,7 +672,7 @@ export default function AttendanceScreen() {
           {/* Judul & Penjelasan */}
           <Text style={styles.permissionTitle}>Kamera belum diizinkan</Text>
           <Text style={styles.permissionSubtitle}>
-            Login Rek butuh kamera untuk foto absen. Buka Pengaturan untuk mengizinkan.
+            SapaKerja butuh kamera untuk foto absen. Buka Pengaturan untuk mengizinkan.
           </Text>
 
           {/* Card Panduan Singkat (3 Langkah) */}
@@ -749,7 +749,7 @@ export default function AttendanceScreen() {
           {/* Judul & Penjelasan */}
           <Text style={styles.permissionTitle}>Lokasi belum aktif</Text>
           <Text style={styles.permissionSubtitle}>
-            Login Rek butuh akses lokasi untuk memastikan kamu berada di area kantor saat presensi. Buka Pengaturan untuk mengizinkan.
+            SapaKerja butuh akses lokasi untuk memastikan kamu berada di area kantor saat presensi. Buka Pengaturan untuk mengizinkan.
           </Text>
 
           {/* Card Panduan Cepat (3 Langkah dengan Keterangan Rinci) */}

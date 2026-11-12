@@ -1,5 +1,5 @@
 /**
- * Token warna brand loginrek — biru kehijauan (teal).
+ * Token warna brand SapaKerja — biru kehijauan (teal).
  * Sumber kebenaran: docs/DESIGN.md (di root repo). Samakan dengan dashboard (src/index.css).
  */
 export const colors = {

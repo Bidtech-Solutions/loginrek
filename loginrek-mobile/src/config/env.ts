@@ -32,7 +32,7 @@ function devApiUrl(): string {
   return `http://192.168.110.103:${API_PORT}/api/v1`;
 }
 
-const PROD_API_URL = 'https://loginrek-api.bidtech.co.id/api/v1';
+const PROD_API_URL = 'https://api.sapakerja.com/api/v1';
 
 const explicitUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 

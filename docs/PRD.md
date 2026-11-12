@@ -1,11 +1,11 @@
-# PRD — loginrek
+# PRD — SapaKerja
 
 > Status: **DRAFT** — disusun dari fitur yang sudah ada di kode dan dokumen lama.
 > Tim produk perlu memverifikasi tujuan, target, dan prioritas di bawah.
 
 ## Latar belakang & tujuan
 
-Pencatatan kehadiran karyawan secara manual rawan salah dan sulit dipantau. **loginrek**
+Pencatatan kehadiran karyawan secara manual rawan salah dan sulit dipantau. **SapaKerja**
 adalah sistem absensi & HR internal: karyawan absen dari HP dengan bukti lokasi dan
 selfie; admin/HR memantau dan mengelola data dari dashboard web.
 
@@ -31,6 +31,20 @@ Tujuan:
 - Foto dikompres otomatis ke WebP (maks 1280×720).
 - Dashboard: daftar & detail kehadiran (peta Leaflet), CRUD karyawan, halaman pengaturan.
 - Ubah profil, kata sandi, dan avatar.
+
+<!-- DIUBAH (OTA): subbagian baru. Detail teknis ada di ARCHITECTURE.md ("Update OTA"), kontrak di API.md. -->
+### Update aplikasi lewat OTA dari server sendiri
+Perbaikan aplikasi bisa sampai ke HP karyawan tanpa menunggu App Store / Play Store. Update dilayani
+backend SapaKerja sendiri (`/updates/*`), bukan server EAS, dan ditandatangani (code signing).
+
+Aturan:
+- **Lewat OTA**: kode JavaScript dan aset yang dirujuk dari JavaScript (gambar, font).
+- **Tetap lewat build baru (`eas build`)**: perubahan native — library native, `app.json` (izin, plugin, ikon, splash,
+  ikon/suara notifikasi), `google-services.json`, dan sertifikat code signing. Versi aplikasi (`version`) dinaikkan.
+- **OTA ditolak otomatis** (job CI gagal, tidak ada yang dirilis) bila terdeteksi perubahan native.
+- Update hanya diterima oleh build yang `runtimeVersion`-nya sama (kebijakan `appVersion`) dan channel `production`.
+- Rilis otomatis saat ada commit di `loginrek-mobile/` (selain `.md`); rollback = rilis update baru dari commit yang sehat.
+- Update terpasang setelah aplikasi dibuka-tutup dua kali (unduh di buka pertama, aktif di buka kedua).
 
 ### Rencana
 - Absen pulang.

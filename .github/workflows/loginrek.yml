@@ -7,11 +7,27 @@
 #   package : bungkus docker-compose.prod.yml + .env.example sebagai artifact
 #   deploy  : buat .env production dari .env.example (nilai production diisi dari
 #             env/secrets di bawah), kirim ke VPS (SCP) -> pull image -> up
+#   changes : deteksi komponen yang berubah pada push: `server` (backend, dashboard, compose,
+#             .env.example, workflow ini) dan `mobile` (loginrek-mobile). Job lain hanya
+#             berjalan bila komponennya berubah.
+#   publish-ota : export bundle loginrek-mobile, CEK perubahan native, buat manifest + tanda
+#             tangan code signing, kirim ke VPS -> disajikan backend di /updates/*.
+#             Berjalan OTOMATIS bila loginrek-mobile berubah, PARALEL dengan jalur server.
+#
+# Contoh: commit yang hanya mengubah loginrek-mobile -> hanya publish-ota (backend dan
+# dashboard TIDAK dibangun/dideploy ulang). Commit di backend/dashboard -> hanya jalur server.
+#
+# Pemicu manual (workflow_dispatch):
+#   target = deploy (default) : jalur server (check -> build -> package -> deploy)
+#   target = ota              : hanya publish-ota
+#   rebase_native             : centang SETELAH build eas baru terpasang, untuk menjadikan kondisi
+#                               native saat ini sebagai acuan OTA (lihat job publish-ota)
 #
 # VPS memakai Traefik (jaringan eksternal traefik-network); lihat docker-compose.prod.yml.
 # Secrets (environment `production`) yang dibutuhkan:
 #   VPS_HOST, VPS_SSH_KEY,
 #   JWT_SECRET (min. 32 karakter), DB_PASSWORD, RUSTFS_SECRET_KEY
+#   UPDATE_SIGNING_KEY (isi private key code signing OTA; dipakai job publish-ota)
 # Akun awal (SEED_ADMIN_*, SEED_EMPLOYEE_*) dan RUSTFS_ACCESS_KEY diambil apa adanya dari .env.example.
 # (opsional: VPS_USER default "root", VPS_PORT default 22, VPS_DEPLOY_PATH default /opt/loginrek).
 # Nilai non-rahasia production (domain dll.) ada di blok `env` job deploy. Setiap deploy
@@ -20,8 +36,10 @@
 # langkah "Buat .env production" bila nilainya berbeda di production.
 # Login GHCR di VPS otomatis memakai github.actor + GITHUB_TOKEN (berlaku selama job deploy),
 # jadi tidak perlu PAT. Skema database dimigrasi otomatis
-# (GORM AutoMigrate) saat backend start. Aplikasi mobile (loginrek-mobile)
-# tidak dideploy dari workflow ini.
+# (GORM AutoMigrate) saat backend start. Aplikasi mobile (loginrek-mobile) tidak
+# dideploy dari job deploy; update OTA-nya dirilis lewat job publish-ota.
+# Berkas OTA disimpan di $DEPLOY_PATH/updates di VPS (di luar image, tidak terhapus saat
+# deploy) dan di-mount read-only ke container backend (lihat docker-compose.prod.yml).
 # =============================================================================
 
 name: loginrek
@@ -34,23 +52,79 @@ on:
       - "loginrek-dashboard/**"
       - "docker-compose.prod.yml"
       - ".env.example"
+      - "loginrek-mobile/**"
+      - "docker-compose.prod.yml"
+      - ".env.example"
       - ".github/workflows/loginrek.yml"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Apa yang dijalankan"
+        type: choice
+        options: [deploy, ota]
+        default: deploy
+      rebase_native:
+        description: "Khusus target=ota: jadikan kondisi native saat ini acuan baru (centang setelah build eas baru terpasang)"
+        type: boolean
+        default: false
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+# Tidak ada concurrency tingkat workflow: antrean diatur per job (deploy dan publish-ota),
+# supaya run yang hanya mengubah mobile tidak mengantre/membatalkan deploy server, dan sebaliknya.
 
 env:
   REGISTRY: ghcr.io
   # Domain publik production (DNS mengarah ke VPS). API_DOMAIN dibakar ke bundle
   # dashboard saat build sebagai VITE_API_URL.
-  DASHBOARD_DOMAIN: loginrek.bidtech.co.id
-  API_DOMAIN: loginrek-api.bidtech.co.id
+  DASHBOARD_DOMAIN: sapakerja.com
+  API_DOMAIN: api.sapakerja.com
+  # Domain lama: tetap dilayani Traefik (tanpa redirect) selama masih ada HP dengan build lama.
+  DASHBOARD_DOMAIN_LEGACY: loginrek.bidtech.co.id
+  API_DOMAIN_LEGACY: loginrek-api.bidtech.co.id
 
 jobs:
+  # Deteksi komponen yang berubah. Hanya jalur yang komponennya berubah yang dijalankan.
+  changes:
+    name: Deteksi perubahan
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.diff.outputs.server }}
+      mobile: ${{ steps.diff.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          server=false
+          mobile=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "$TARGET" = "ota" ]; then mobile=true; else server=true; fi
+          elif [ -z "$BEFORE" ] || [[ "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            # push pertama / force-push: acuan tidak ada, anggap semuanya berubah
+            server=true; mobile=true
+          else
+            files=$(git diff --name-only "$BEFORE" "$SHA")
+            if grep -qE '^(loginrek-backend/|loginrek-dashboard/|docker-compose\.prod\.yml$|\.env\.example$|\.github/workflows/loginrek\.yml$)' <<< "$files"; then server=true; fi
+            mobile_files=$( { grep -E '^loginrek-mobile/' <<< "$files" || true; } | { grep -vE '\.md$' || true; } )
+            if [ -n "$mobile_files" ]; then mobile=true; fi
+          fi
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+          echo "### Perubahan terdeteksi" >> "$GITHUB_STEP_SUMMARY"
+          echo "- server (backend/dashboard/compose): \`$server\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- mobile (OTA): \`$mobile\`" >> "$GITHUB_STEP_SUMMARY"
+
   check-backend:
     name: Backend — vet & build
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,6 +140,8 @@ jobs:
 
   check-dashboard:
     name: Dashboard — lint & build
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -83,7 +159,8 @@ jobs:
 
   build:
     name: Build & push image (${{ matrix.app }})
-    needs: [check-backend, check-dashboard]
+    needs: [changes, check-backend, check-dashboard]
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,6 +210,8 @@ jobs:
 
   package:
     name: Artifact compose + env
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -149,7 +228,12 @@ jobs:
 
   deploy:
     name: Deploy ke VPS
-    needs: [build, package]
+    needs: [changes, build, package]
+    if: needs.changes.outputs.server == 'true'
+    # Antrean khusus deploy server: tidak saling membatalkan, dan tidak menunggu OTA.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: production
     # packages: read -> GITHUB_TOKEN dipakai VPS untuk `docker pull` dari GHCR selama job ini berjalan
@@ -199,7 +283,7 @@ jobs:
 
           # -- umum & backend --
           set_env APP_ENV production
-          set_env CORS_ORIGINS "https://$DASHBOARD_DOMAIN"
+          set_env CORS_ORIGINS "https://$DASHBOARD_DOMAIN,https://$DASHBOARD_DOMAIN_LEGACY"
           set_env JWT_SECRET "$JWT_SECRET"
           # -- akun awal (SEED_*): tidak di-override, ikut nilai di .env.example --
           # -- database & object storage (jaringan internal compose) --
@@ -212,6 +296,8 @@ jobs:
           # -- domain & dashboard --
           set_env DASHBOARD_DOMAIN "$DASHBOARD_DOMAIN"
           set_env API_DOMAIN "$API_DOMAIN"
+          set_env DASHBOARD_DOMAIN_LEGACY "$DASHBOARD_DOMAIN_LEGACY"
+          set_env API_DOMAIN_LEGACY "$API_DOMAIN_LEGACY"
           set_env VITE_API_URL "https://$API_DOMAIN"
           # -- deploy --
           set_env GHCR_OWNER "$GHCR_OWNER"
@@ -274,3 +360,442 @@ jobs:
             docker compose ps
             docker image prune -f || true
             echo "Deployed ghcr.io/$GHCR_OWNER/loginrek-{backend,dashboard}:$IMAGE_TAG"
+
+  # ---------------------------------------------------------------------------
+  # OTA (expo-updates) ke server sendiri. OTOMATIS saat loginrek-mobile berubah, paralel dengan
+  # jalur server (dan tidak menyentuh backend/dashboard).
+  # Alur: env dari eas.json -> CEK NATIVE (gagal bila perubahan butuh build baru) -> expo export ->
+  #       manifest + tanda tangan (skrip inline) -> tar -> SCP ke VPS -> ekstrak ke
+  #       $DEPLOY_PATH/updates -> pindahkan pointer latest.json.
+  # Backend Go (internal/updates) yang menyajikan hasilnya di /updates/manifest dan /updates/files/*.
+  # Pointer dipindah TERAKHIR agar klien tak pernah melihat update setengah jadi.
+  #
+  # Pemeriksaan native: sidik jari = daftar library native (prod) di node_modules + config app.json
+  # yang memengaruhi binary (tanpa version/extra) + hash berkas yang dirujuk config (ikon, splash,
+  # ikon/suara notifikasi, google-services.json, sertifikat). Dibandingkan dengan acuan di VPS
+  # ($DEPLOY_PATH/ota-state/<channel>/<runtime>.native.txt). Beda => job GAGAL, tidak ada OTA.
+  # Acuan dibuat/diperbarui hanya lewat run manual: target=ota + rebase_native (setelah eas build).
+  # ---------------------------------------------------------------------------
+  publish-ota:
+    name: Publish OTA (loginrek-mobile)
+    needs: [changes]
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    # Antrean khusus OTA: dua rilis tidak berjalan bersamaan, tapi tidak menunggu deploy server.
+    concurrency:
+      group: ota-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: loginrek-mobile
+    env:
+      # Harus sama dengan channel yang dipakai build production di eas.json / app.json.
+      CHANNEL: production
+      EAS_PROFILE: production
+      # Variabel EXPO_PUBLIC_* yang BOLEH kosong (dipakai di kode tapi punya nilai bawaan).
+      EXPO_PUBLIC_OPTIONAL: "EXPO_PUBLIC_API_PORT"
+      DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH || '/opt/loginrek' }}
+      OTA_DIR: ${{ secrets.VPS_DEPLOY_PATH || '/opt/loginrek' }}/updates
+      REBASE: ${{ github.event_name == 'workflow_dispatch' && inputs.rebase_native && 'true' || 'false' }}
+      # Lewati unggah sourcemap Sentry (tidak ada SENTRY_AUTH_TOKEN di CI ini)
+      SENTRY_DISABLE_AUTO_UPLOAD: "true"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: loginrek-mobile/package-lock.json
+
+      - name: Validasi channel
+        run: |
+          [[ "$CHANNEL" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "::error::channel tidak valid: $CHANNEL"; exit 1; }
+
+      - run: npm ci --no-audit --no-fund
+
+      # Nilai EXPO_PUBLIC_* DIBAKAR ke bundle saat export, jadi harus sama dengan build production.
+      # Sumbernya eas.json (build.<profil>.env, termasuk `extends`), tidak ditulis ulang di sini.
+      - name: Muat env dari eas.json
+        run: |
+          set -euo pipefail
+          [ -f eas.json ] || { echo "::error::eas.json tidak ada"; exit 1; }
+          jq -r --arg p "$EAS_PROFILE" '
+            def res($n): (.build[$n] // {}) as $b
+              | (if $b.extends then res($b.extends) else {} end) * ($b.env // {});
+            res($p) | to_entries[]
+            | select((.value | type) == "string" and (.value | contains("\n") | not))
+            | [.key, .value] | @tsv' eas.json > "$RUNNER_TEMP/eas-env.tsv"
+          loaded=""
+          while IFS=$'\t' read -r k v; do
+            if [[ "$k" =~ ^(EXPO_PUBLIC_[A-Z0-9_]+|APP_ENV)$ ]]; then
+              echo "$k=$v" >> "$GITHUB_ENV"
+              loaded+="$k "
+            else
+              echo "Dilewati (bukan EXPO_PUBLIC_*/APP_ENV): $k"
+            fi
+          done < "$RUNNER_TEMP/eas-env.tsv"
+          echo "Env dimuat dari eas.json ($EAS_PROFILE): ${loaded:-tidak ada}"
+
+      # Gagalkan bila ada EXPO_PUBLIC_* yang dipakai di kode tapi tidak punya nilai (bundle rusak).
+      - name: Cek env publik
+        run: |
+          set -euo pipefail
+          names=$( { grep -rhoE 'EXPO_PUBLIC_[A-Z0-9_]+' src app.json app.config.* 2>/dev/null || true; } | sort -u )
+          missing=0
+          for n in $names; do
+            [ -n "${!n:-}" ] && continue
+            if [[ " $EXPO_PUBLIC_OPTIONAL " == *" $n "* ]]; then
+              echo "Opsional, dilewati: $n"
+            else
+              echo "::error::$n dipakai di kode tapi tidak ada di eas.json ($EAS_PROFILE).env (atau tambahkan ke EXPO_PUBLIC_OPTIONAL bila memang opsional)."
+              missing=1
+            fi
+          done
+          [ "$missing" = 0 ] || exit 1
+          echo "Variabel EXPO_PUBLIC_* terdeteksi: ${names:-tidak ada}"
+
+      - name: Cek perubahan native
+        id: native
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Config publik dipakai juga oleh langkah manifest.
+          npx expo config --type public --json > "$RUNNER_TEMP/expoConfig.json"
+
+          cat > "$RUNNER_TEMP/native-fingerprint.mjs" <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+
+          const sha = (buf) => createHash('sha256').update(buf).digest('hex');
+          const lines = [];
+
+          // 1) Library native produksi di node_modules (punya folder android/ios, podspec, atau modul expo)
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const lockPkgs = lock.packages ?? {};
+          const names = [];
+          for (const e of readdirSync('node_modules')) {
+            if (e.startsWith('.')) continue;
+            if (e.startsWith('@')) {
+              for (const s of readdirSync(path.join('node_modules', e))) names.push(`${e}/${s}`);
+            } else names.push(e);
+          }
+          for (const name of names.sort()) {
+            const dir = path.join('node_modules', name);
+            if (!existsSync(path.join(dir, 'package.json'))) continue;
+            if (lockPkgs[`node_modules/${name}`]?.dev === true) continue; // hanya dependensi produksi
+            const entries = readdirSync(dir);
+            const isNative =
+              entries.includes('android') || entries.includes('ios') ||
+              entries.includes('expo-module.config.json') || entries.includes('react-native.config.js') ||
+              entries.some((f) => f.endsWith('.podspec'));
+            if (!isNative) continue;
+            const { version } = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+            lines.push(`pkg ${name}@${version}`);
+          }
+
+          // 2) Config yang memengaruhi binary
+          let cfg;
+          if (existsSync('app.json')) cfg = JSON.parse(readFileSync('app.json', 'utf8')).expo ?? {};
+          else cfg = JSON.parse(execFileSync('npx', ['expo', 'config', '--type', 'prebuild', '--json'], { encoding: 'utf8' }));
+          for (const k of ['version', 'extra', 'runtimeVersion', 'description', 'web']) delete cfg[k];
+          if (cfg.android) delete cfg.android.versionCode;
+          if (cfg.ios) delete cfg.ios.buildNumber;
+          const canon = (v) =>
+            Array.isArray(v) ? v.map(canon)
+            : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])]))
+            : v;
+          lines.push(`config ${sha(JSON.stringify(canon(cfg)))}`);
+
+          // 3) Isi berkas yang dirujuk config (ikon, splash, ikon/suara notifikasi, google-services.json, sertifikat)
+          const files = new Set();
+          (function walk(v) {
+            if (typeof v === 'string') {
+              const p = path.normalize(v);
+              if (!p.startsWith('..') && !path.isAbsolute(p) && existsSync(p) && statSync(p).isFile()) files.add(p);
+            } else if (Array.isArray(v)) v.forEach(walk);
+            else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+          })(cfg);
+          if (existsSync('google-services.json')) files.add('google-services.json');
+          if (existsSync('GoogleService-Info.plist')) files.add('GoogleService-Info.plist');
+          for (const f of [...files].sort()) lines.push(`file ${f} ${sha(readFileSync(f))}`);
+
+          // 4) Patch native (patch-package)
+          if (existsSync('patches')) {
+            for (const f of readdirSync('patches').sort()) {
+              const p = path.join('patches', f);
+              if (statSync(p).isFile()) lines.push(`patch ${f} ${sha(readFileSync(p))}`);
+            }
+          }
+
+          // Runtime (sama dengan aturan di skrip manifest)
+          const pub = JSON.parse(readFileSync(process.env.EXPO_CONFIG, 'utf8'));
+          const rv = pub.runtimeVersion;
+          const runtime = typeof rv === 'string' ? rv : rv?.policy === 'appVersion' ? pub.version : null;
+          if (!runtime) { console.error(`runtimeVersion tidak bisa ditentukan: ${JSON.stringify(rv)}`); process.exit(1); }
+          if (!/^[A-Za-z0-9._-]{1,64}$/.test(runtime)) { console.error(`runtimeVersion tidak valid: ${runtime}`); process.exit(1); }
+
+          writeFileSync(process.env.NATIVE_OUT, lines.sort().join('\n') + '\n');
+          if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `runtime=${runtime}\n`);
+          console.log(`runtime=${runtime}; ${lines.length} butir sidik jari native`);
+          NODE
+          EXPO_CONFIG="$RUNNER_TEMP/expoConfig.json" NATIVE_OUT="$RUNNER_TEMP/native.txt" \
+            node "$RUNNER_TEMP/native-fingerprint.mjs"
+          runtime=$(grep '^runtime=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2)
+
+          # Ambil acuan dari VPS
+          key="$RUNNER_TEMP/vps_key"
+          install -m 600 /dev/null "$key"
+          printf '%s\n' "$VPS_SSH_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          base="$DEPLOY_PATH/ota-state/$CHANNEL/$runtime.native.txt"
+          ssh -i "$key" -p "$VPS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" "$VPS_USER@$VPS_HOST" \
+            "if [ -f '$base' ]; then cat '$base'; else echo __MISSING__; fi" > "$RUNNER_TEMP/native.base"
+
+          {
+            echo "### Pemeriksaan native"
+            echo "- channel/runtime: \`$CHANNEL / $runtime\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$(head -n1 "$RUNNER_TEMP/native.base")" = "__MISSING__" ]; then
+            state=missing
+          elif diff -u "$RUNNER_TEMP/native.base" "$RUNNER_TEMP/native.txt" > "$RUNNER_TEMP/native.diff"; then
+            state=same
+          else
+            state=changed
+          fi
+
+          if [ "$REBASE" = "true" ]; then
+            echo "- hasil: rebase_native — kondisi native ini menjadi acuan baru (status sebelumnya: $state)" >> "$GITHUB_STEP_SUMMARY"
+            echo "rebase: status sebelumnya $state; acuan akan diperbarui setelah publish."
+          else
+            case "$state" in
+              same)
+                echo "- hasil: tidak ada perubahan native, OTA boleh" >> "$GITHUB_STEP_SUMMARY" ;;
+              missing)
+                echo "- hasil: DITOLAK, belum ada acuan native" >> "$GITHUB_STEP_SUMMARY"
+                echo "::error::Belum ada acuan native untuk runtime $runtime. Setelah build eas versi ini terpasang, jalankan manual: Run workflow > target=ota + centang rebase_native."
+                exit 1 ;;
+              changed)
+                { echo "- hasil: DITOLAK, perubahan native terdeteksi"; echo '```diff'; cat "$RUNNER_TEMP/native.diff"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+                cat "$RUNNER_TEMP/native.diff"
+                echo "::error::Perubahan native terdeteksi (library native / config app / ikon / suara / google-services). Tidak bisa lewat OTA: naikkan version di app.json, jalankan eas build, pasang, lalu jalankan rebase_native."
+                exit 1 ;;
+            esac
+          fi
+
+      - name: Export bundle
+        run: npx expo export --platform ios --platform android
+
+      - name: Buat manifest dan tanda tangan
+        id: manifest
+        env:
+          BASE_URL: https://${{ env.API_DOMAIN }}/updates/files
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          KEY_ID: main
+          GUARD_RUNTIME: ${{ steps.native.outputs.runtime }}
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/expoConfig.json" dist/expoConfig.json
+          cat > "$RUNNER_TEMP/make-manifest.mjs" <<'NODE'
+          import { createHash, createSign, randomUUID } from 'node:crypto';
+          import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const env = (k, d) => (process.env[k] && process.env[k].trim() !== '' ? process.env[k] : d);
+          const fail = (msg) => {
+            console.error(`make-manifest: ${msg}`);
+            process.exit(1);
+          };
+
+          const DIST = env('DIST', 'dist');
+          const OUT = env('OUT', 'ota-out');
+          const CHANNEL = env('CHANNEL', 'production');
+          const KEY_ID = env('KEY_ID', 'main');
+          const SIGNING_KEY = env('UPDATE_SIGNING_KEY');
+          const BASE_URL = (env('BASE_URL') ?? fail('BASE_URL wajib diisi')).replace(/\/+$/, '');
+          const SAFE = /^[A-Za-z0-9._-]{1,64}$/;
+
+          if (!SIGNING_KEY) fail('UPDATE_SIGNING_KEY kosong (buat secret di Environment production).');
+          if (!SAFE.test(CHANNEL)) fail(`CHANNEL tidak valid: ${CHANNEL}`);
+
+          const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
+          const metadata = readJson(path.join(DIST, 'metadata.json'));
+          const expoConfig = readJson(path.join(DIST, 'expoConfig.json'));
+
+          function resolveRuntime(cfg) {
+            if (env('RUNTIME_VERSION')) return env('RUNTIME_VERSION');
+            const rv = cfg.runtimeVersion;
+            if (typeof rv === 'string') return rv;
+            if (rv && rv.policy === 'appVersion') return cfg.version;
+            fail(`runtimeVersion tidak bisa ditentukan dari config (${JSON.stringify(rv)}). Set RUNTIME_VERSION.`);
+          }
+          const runtimeVersion = resolveRuntime(expoConfig);
+          if (!SAFE.test(runtimeVersion)) fail(`runtimeVersion tidak valid: ${runtimeVersion}`);
+
+          const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+          const sha = (process.env.GITHUB_SHA ?? 'local').slice(0, 7);
+          const publishId = `${stamp}-${sha}`;
+
+          const MIME = {
+            png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+            svg: 'image/svg+xml', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2',
+            json: 'application/json', mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', m4a: 'audio/mp4',
+            txt: 'text/plain', html: 'text/html', db: 'application/octet-stream',
+          };
+          const b64url = (buf) => createHash('sha256').update(buf).digest('base64url');
+          const md5 = (buf) => createHash('md5').update(buf).digest('hex');
+          const urlFor = (rel) =>
+            `${BASE_URL}/${CHANNEL}/${runtimeVersion}/${publishId}/${rel.split('/').map(encodeURIComponent).join('/')}`;
+
+          const outDir = path.join(OUT, CHANNEL, runtimeVersion, publishId);
+          mkdirSync(outDir, { recursive: true });
+          cpSync(DIST, outDir, { recursive: true });
+
+          for (const platform of ['ios', 'android']) {
+            const fm = metadata.fileMetadata?.[platform];
+            if (!fm?.bundle) fail(`metadata.json tidak memuat bundle untuk ${platform}`);
+
+            const bundleBuf = readFileSync(path.join(DIST, fm.bundle));
+            const launchAsset = {
+              hash: b64url(bundleBuf),
+              key: md5(bundleBuf),
+              contentType: 'application/javascript',
+              url: urlFor(fm.bundle),
+            };
+            const assets = (fm.assets ?? []).map((a) => {
+              const buf = readFileSync(path.join(DIST, a.path));
+              return {
+                hash: b64url(buf),
+                key: md5(buf),
+                fileExtension: a.ext ? `.${a.ext}` : '',
+                contentType: MIME[(a.ext ?? '').toLowerCase()] ?? 'application/octet-stream',
+                url: urlFor(a.path),
+              };
+            });
+
+            const manifest = {
+              id: randomUUID(),
+              createdAt: new Date().toISOString(),
+              runtimeVersion,
+              launchAsset,
+              assets,
+              metadata: {},
+              extra: { expoClient: expoConfig },
+            };
+
+            // String ini dikirim apa adanya oleh server dan menjadi bahan tanda tangan: jangan diformat ulang.
+            const manifestString = JSON.stringify(manifest);
+            writeFileSync(path.join(outDir, `manifest.${platform}.json`), manifestString, 'utf8');
+
+            const signature = createSign('RSA-SHA256').update(manifestString).sign(SIGNING_KEY, 'base64');
+            writeFileSync(path.join(outDir, `manifest.${platform}.sig`), `sig="${signature}", keyid="${KEY_ID}"\n`, 'utf8');
+            console.log(`${platform}: bundle ${fm.bundle}, ${assets.length} aset, id ${manifest.id}`);
+          }
+
+          console.log(`channel=${CHANNEL} runtime=${runtimeVersion} publishId=${publishId}`);
+          if (process.env.GITHUB_OUTPUT) {
+            appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `channel=${CHANNEL}\nruntime=${runtimeVersion}\npublish_id=${publishId}\n`,
+            );
+          }
+          NODE
+          node "$RUNNER_TEMP/make-manifest.mjs"
+
+          # Runtime di manifest harus sama dengan runtime yang dipakai pemeriksaan native.
+          manifest_runtime=$(grep '^runtime=' "$GITHUB_OUTPUT" | cut -d= -f2)
+          [ "$manifest_runtime" = "$GUARD_RUNTIME" ] || { echo "::error::runtime manifest ($manifest_runtime) != pemeriksaan native ($GUARD_RUNTIME)"; exit 1; }
+
+          {
+            echo "### OTA siap dirilis"
+            echo "- channel: \`$CHANNEL\`"
+            echo "- runtime: \`$(grep '^runtime=' "$GITHUB_OUTPUT" | cut -d= -f2)\`"
+            echo "- publishId: \`$(grep '^publish_id=' "$GITHUB_OUTPUT" | cut -d= -f2)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          tar -czf "$GITHUB_WORKSPACE/ota-upload.tgz" -C ota-out .
+          ls -lh "$GITHUB_WORKSPACE/ota-upload.tgz"
+
+      - name: Siapkan folder di VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          username: ${{ secrets.VPS_USER || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DEPLOY_PATH,OTA_DIR
+          script: mkdir -p "$DEPLOY_PATH" "$OTA_DIR"
+
+      - name: Kirim paket update ke VPS
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          username: ${{ secrets.VPS_USER || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: ota-upload.tgz
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: Ekstrak dan aktifkan update
+        uses: appleboy/ssh-action@v1
+        env:
+          RUNTIME: ${{ steps.manifest.outputs.runtime }}
+          PUBLISH_ID: ${{ steps.manifest.outputs.publish_id }}
+          KEEP: "10"
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          username: ${{ secrets.VPS_USER || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DEPLOY_PATH,OTA_DIR,CHANNEL,RUNTIME,PUBLISH_ID,KEEP
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            tar -xzf ota-upload.tgz -C "$OTA_DIR" --no-same-owner --no-overwrite-dir
+            rm -f ota-upload.tgz
+            chmod -R a+rX "$OTA_DIR"
+
+            # Pindahkan pointer TERAKHIR (atomik), setelah semua berkas ada.
+            cd "$OTA_DIR/$CHANNEL/$RUNTIME"
+            printf '{"publishId":"%s"}\n' "$PUBLISH_ID" > latest.json.tmp
+            chmod 644 latest.json.tmp
+            mv -f latest.json.tmp latest.json
+
+            # Simpan $KEEP rilis terakhir (nama folder = timestamp, jadi urut waktu).
+            ls -1d */ | sort -r | tail -n +$((KEEP + 1)) | xargs -r rm -rf --
+            echo "OTA aktif: $CHANNEL / $RUNTIME / $PUBLISH_ID"
+
+      # Hanya saat rebase_native: catat kondisi native ini sebagai acuan OTA berikutnya.
+      - name: Simpan acuan native di VPS
+        if: env.REBASE == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          RUNTIME: ${{ steps.native.outputs.runtime }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/vps_key"
+          install -m 600 /dev/null "$key"
+          printf '%s\n' "$VPS_SSH_KEY" > "$key"
+          dir="$DEPLOY_PATH/ota-state/$CHANNEL"
+          ssh -i "$key" -p "$VPS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" "$VPS_USER@$VPS_HOST" \
+            "mkdir -p '$dir' && cat > '$dir/$RUNTIME.native.txt.tmp' && mv -f '$dir/$RUNTIME.native.txt.tmp' '$dir/$RUNTIME.native.txt'" \
+            < "$RUNNER_TEMP/native.txt"
+          rm -f "$key"
+          echo "Acuan native untuk $CHANNEL/$RUNTIME diperbarui."

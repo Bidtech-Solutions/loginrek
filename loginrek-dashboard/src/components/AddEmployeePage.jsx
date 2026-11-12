@@ -130,7 +130,7 @@ export default function AddEmployeePage({ onBack, onSave }) {
 
         <h1 className="page-title add-employee-title">Tambah Karyawan Baru</h1>
         <p className="page-subtitle add-employee-subtitle">
-          Daftarkan karyawan, magang, atau siswa PKL baru untuk akses akun presensi dan data organisasi di Login Rek.
+          Daftarkan karyawan, magang, atau siswa PKL baru untuk akses akun presensi dan data organisasi di SapaKerja.
         </p>
       </div>
 

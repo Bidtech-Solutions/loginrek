@@ -1,11 +1,11 @@
-# Design — loginrek
+# Design — SapaKerja
 
 Satu sistem desain untuk dashboard (admin/HR, desktop) dan mobile (karyawan).
 
 ## Brand
 
-- Nama: **loginrek** (huruf kecil di logo & judul).
-- Warna utama: **biru kehijauan (teal)**. Logo sementara; ganti dengan aset final.
+- Nama: **SapaKerja** (PascalCase; logo di `loginrek-mobile/assets` dan `loginrek-dashboard/public`). Identifier teknis tetap `loginrek`.
+- Warna utama: **biru kehijauan (teal)**. Logo SapaKerja (teal `#0B7F78`).
 - Bahasa UI: Indonesia. Tanggal `22 Okt 2026` / `Kamis, 22 Okt 2026`, jam `08:05 WIB`.
 
 ## Token warna

@@ -7,3 +7,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Rahasia: .easignore MENGGANTIKAN .gitignore saat upload build EAS, jadi harus dikecualikan di sini.
+# (google-services.json, GoogleService-Info.plist, certs/ dan assets/notif* sengaja TIDAK dikecualikan: dibutuhkan build.)
+keys/
+service-account.json
+driven-striker-*.json
+.env.local
+.env*.local
+

@@ -1,4 +1,4 @@
-# Arsitektur — loginrek
+# Arsitektur — SapaKerja
 
 ## Gambaran sistem
 
@@ -124,7 +124,7 @@ src/app (route)  ->  hook / logic  ->  src/lib/api.ts  ->  REST API
 | `EXPO_PUBLIC_API_URL` di-set (`.env.local` / `eas.json`) | nilai tersebut |
 | Dev via Expo Go, satu Wi-Fi dengan laptop | otomatis `http://<IP laptop>:3333/api/v1` |
 | Emulator Android / iOS simulator | `10.0.2.2` / `localhost` |
-| Build production | `https://loginrek-api.bidtech.co.id/api/v1` (di `eas.json`) |
+| Build production | `https://api.sapakerja.com/api/v1` (di `eas.json`) |
 
 Mode `--tunnel` tidak meneruskan port API — set `EXPO_PUBLIC_API_URL` ke URL tunnel API.
 
@@ -148,7 +148,61 @@ Mode `--tunnel` tidak meneruskan port API — set `EXPO_PUBLIC_API_URL` ke URL t
 cd loginrek-mobile
 npx eas-cli@latest build --profile preview --platform android
 ```
-Rilis iOS butuh Apple Developer Program. CI mobile (EAS) belum ada.
+Rilis iOS butuh Apple Developer Program. Build binary (EAS) masih manual; update JavaScript-nya dirilis otomatis lewat
+OTA (bagian berikut). <!-- DIUBAH (OTA): kalimat "CI mobile (EAS) belum ada" diganti. -->
+
+### Update OTA (expo-updates, server sendiri)
+<!-- DIUBAH (OTA): subbagian baru. Menggantikan server update EAS (u.expo.dev). -->
+
+JS + aset dari JS bisa diperbarui tanpa build baru. Perubahan native tidak bisa dan **ditolak otomatis** oleh CI.
+
+```
+commit di loginrek-mobile/ (bukan .md) ──► job `changes` (mobile=true)
+        └─► job `publish-ota`: env dari eas.json → cek native → expo export → manifest + tanda tangan
+              → tar → SCP ke VPS → ekstrak ke $DEPLOY_PATH/updates → pindahkan latest.json (terakhir)
+HP ──GET /updates/manifest──► Traefik ──► lr-backend (internal/updates, baca /data/updates) ──► manifest + expo-signature
+HP ──GET /updates/files/…──► bundle & aset (immutable)
+```
+
+- **Pemisahan job** (`.github/workflows/loginrek.yml`): `changes` membandingkan push. `server` (backend, dashboard,
+  `docker-compose.prod.yml`, `.env.example`, workflow) → check/build/package/deploy. `mobile` (`loginrek-mobile/**`, kecuali `.md`)
+  → `publish-ota`. Keduanya paralel dan tidak saling memicu; antrean per job (`deploy-production`, `ota-production`).
+  Manual: Run workflow → `target` = `deploy` atau `ota`.
+- **Tata letak di VPS** (`$DEPLOY_PATH`, default `/opt/loginrek`):
+
+  | Di VPS | Di container backend | Isi |
+  | ------ | -------------------- | --- |
+  | `updates/` | `/data/updates` (read-only, `UPDATES_DIR`) | `<channel>/<runtime>/latest.json` + `<publishId>/` (`manifest.<platform>.json`, `.sig`, `_expo/…`, `assets/…`) |
+  | `ota-state/<channel>/<runtime>.native.txt` | – (tidak di-mount) | acuan sidik jari native untuk pemeriksaan |
+
+  Folder `updates/` harus terbaca container (UID 10001): folder 755, berkas 644 (job menjalankan `chmod -R a+rX`).
+  Tersisa 10 rilis terakhir per runtime; sisanya dihapus job. Pointer `latest.json` dipindah paling akhir (atomik).
+- **Code signing**: sertifikat publik `loginrek-mobile/certs/certificate.pem` ditanam di app (`app.json` → `updates.codeSigningCertificate`,
+  `keyid: main`, `alg: rsa-v1_5-sha256`). Private key **tidak** di repo: lokal di `loginrek-mobile/keys/` (di-ignore) dan GitHub secret
+  `UPDATE_SIGNING_KEY` (Environment `production`). Hanya CI yang menandatangani; backend cuma menyajikan `.sig`. Mengganti key/sertifikat = build baru.
+- **Pemeriksaan native**: sidik jari = library native produksi di `node_modules`, `app.json` (tanpa `version`/`extra`), isi berkas yang dirujuk
+  config (ikon, splash, ikon/suara notifikasi, `google-services.json`, `GoogleService-Info.plist`, sertifikat) dan `patches/`.
+  Dibandingkan dengan `ota-state/…native.txt`. Beda atau acuan belum ada → job gagal, tidak ada OTA.
+- **Channel & runtime**: header `expo-channel-name: production` (`app.json`, cocok dengan `eas.json` profil `production`), runtime = `version`
+  (`runtimeVersion.policy: appVersion`). Profil `development`/`preview`/`production-internal` punya channel sendiri dan **tidak** menerima OTA ini.
+  Nilai `EXPO_PUBLIC_*` diambil dari `eas.json` (`build.production.env`) agar bundle OTA identik dengan build production.
+
+**Cara rilis** — otomatis saat commit di `loginrek-mobile/` masuk `main`. Pantau di Actions → `loginrek` → `Publish OTA`.
+
+**Setelah `eas build` baru terpasang** (atau `version` naik): jalankan manual Actions → `loginrek` → Run workflow → `target=ota` + centang
+`rebase_native`. Ini menyimpan kondisi native saat ini sebagai acuan baru dan sekaligus merilis update. Sebelum itu, OTA otomatis gagal
+dengan pesan "Belum ada acuan native" (disengaja).
+
+**Rollback** — rilis update **baru** dari commit yang sehat (revert commit lalu push, atau Run workflow dari commit itu). Jangan hanya
+mengembalikan `latest.json` ke ID lama: klien yang sudah mengunduh update baru tidak akan turun ke ID yang lebih lama.
+
+**Secrets** (Environment `production`): `UPDATE_SIGNING_KEY` (isi `keys/private-key.pem`) + `VPS_HOST`, `VPS_SSH_KEY` (wajib),
+`VPS_USER`, `VPS_PORT`, `VPS_DEPLOY_PATH` (opsional) yang sudah dipakai deploy. Contoh tanpa mencetak key:
+`gh secret set UPDATE_SIGNING_KEY --env production < loginrek-mobile/keys/private-key.pem`.
+
+**Uji di HP**: pasang build `production` yang memuat sertifikat ini, rilis satu update, lalu buka-tutup aplikasi dua kali
+(buka pertama mengunduh, buka kedua menjalankan). Di VPS: `curl -i -H 'expo-platform: ios' -H 'expo-runtime-version: 1.0.2'
+-H 'expo-channel-name: production' https://api.sapakerja.com/updates/manifest` (204 = belum ada update).
 
 ## Deploy
 
@@ -158,8 +212,15 @@ penuh di VPS, di belakang **Traefik** (jaringan eksternal `traefik-network`, ent
 
 | Domain | Service | Keterangan |
 | ------ | ------- | ---------- |
-| `loginrek.bidtech.co.id` | `lr-dashboard` | dashboard HR (SPA statis Nginx) |
-| `loginrek-api.bidtech.co.id` | `lr-backend` | REST API + foto (`/uploads/*`); rate limit 30 req/s per IP (`CF-Connecting-IP`) |
+| `sapakerja.com` | `lr-dashboard` | dashboard HR (SPA statis Nginx) |
+| `loginrek.bidtech.co.id` (`DASHBOARD_DOMAIN_LEGACY`) | `lr-dashboard` | domain lama dashboard, dilayani langsung (tanpa redirect) |
+| `api.sapakerja.com` | `lr-backend` | REST API + foto (`/uploads/*`) + update OTA (`/updates/*`); rate limit 30 req/s per IP (`CF-Connecting-IP`) |
+| `loginrek-api.bidtech.co.id` (`API_DOMAIN_LEGACY`) | `lr-backend` | domain lama API; router `lr-api` yang sama, dilayani langsung |
+
+**Dua domain, tanpa redirect.** Router `lr-dashboard` dan `lr-api` memakai `Host(baru) || Host(lama)`; `CORS_ORIGINS` memuat kedua origin dashboard. Domain lama TIDAK di-redirect di Cloudflare: HP dengan build lama masih memanggil `loginrek-api.bidtech.co.id`, dan redirect mengubah POST menjadi GET serta membuang header `Authorization` saat lintas host. Dashboard hanya punya satu `VITE_API_URL` (`https://api.sapakerja.com`), termasuk saat dibuka lewat domain lama. Domain lama boleh dipensiunkan setelah tidak ada HP dengan build lama.
+
+<!-- DIUBAH (OTA): `/updates/*` dan volume `./updates` ditambahkan. Saat ini /updates masih memakai router `lr-api` (rate limit + kompresi Traefik yang sama). -->
+- `lr-backend` me-mount `./updates` (di samping compose) ke `/data/updates` **read-only**; `UPDATES_DIR=/data/updates`. Lihat "Update OTA".
 
 - PostgreSQL dan RustFS hanya di jaringan `internal` (tidak diekspos ke Traefik). Foto disajikan
   backend lewat `GET /uploads/*key` yang membaca dari RustFS.

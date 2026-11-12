@@ -10,18 +10,18 @@ import (
 )
 
 type Config struct {
-	Port           string
-	AppEnv         string
-	DBDriver       string
-	DBHost         string
-	DBPort         string
-	DBUser         string
-	DBPassword     string
-	DBName         string
-	DBSSLMode      string
-	SQLitePath     string
-	JWTSecret      string
-	CORSOrigins    []string
+	Port        string
+	AppEnv      string
+	DBDriver    string
+	DBHost      string
+	DBPort      string
+	DBUser      string
+	DBPassword  string
+	DBName      string
+	DBSSLMode   string
+	SQLitePath  string
+	JWTSecret   string
+	CORSOrigins []string
 
 	// Seeder awal (hanya dipakai saat tabel users masih kosong)
 	SeedAdminEmail       string
@@ -35,9 +35,12 @@ type Config struct {
 	RustFSBucket    string
 	RustFSUseSSL    bool
 	RustFSPublicURL string
-	ImageMaxWidth  int
-	ImageMaxHeight int
-	ImageQuality   float32
+	ImageMaxWidth   int
+	ImageMaxHeight  int
+	ImageQuality    float32
+
+	// UpdatesDir: folder berkas update OTA (expo-updates) yang disajikan di /updates/*.
+	UpdatesDir string
 }
 
 func LoadConfig() *Config {
@@ -73,32 +76,33 @@ func LoadConfig() *Config {
 	quality := float32(getEnvAsInt("IMAGE_WEBP_QUALITY", 80))
 
 	return &Config{
-		Port:            port,
-		AppEnv:          appEnv,
-		DBDriver:        dbDriver,
-		DBHost:          dbHost,
-		DBPort:          dbPort,
-		DBUser:          dbUser,
-		DBPassword:      dbPass,
-		DBName:          dbName,
-		DBSSLMode:       dbSSL,
-		SQLitePath:      sqlitePath,
-		JWTSecret:       jwtSecret,
-		CORSOrigins:     splitCSV(getEnv("CORS_ORIGINS", "http://localhost:5173")),
+		Port:        port,
+		AppEnv:      appEnv,
+		DBDriver:    dbDriver,
+		DBHost:      dbHost,
+		DBPort:      dbPort,
+		DBUser:      dbUser,
+		DBPassword:  dbPass,
+		DBName:      dbName,
+		DBSSLMode:   dbSSL,
+		SQLitePath:  sqlitePath,
+		JWTSecret:   jwtSecret,
+		CORSOrigins: splitCSV(getEnv("CORS_ORIGINS", "http://localhost:5173")),
 
 		SeedAdminEmail:       strings.ToLower(strings.TrimSpace(os.Getenv("SEED_ADMIN_EMAIL"))),
 		SeedAdminPassword:    os.Getenv("SEED_ADMIN_PASSWORD"),
 		SeedEmployeeEmail:    strings.ToLower(strings.TrimSpace(os.Getenv("SEED_EMPLOYEE_EMAIL"))),
 		SeedEmployeePassword: os.Getenv("SEED_EMPLOYEE_PASSWORD"),
-		RustFSEndpoint:  rustfsEndpoint,
-		RustFSAccessKey: rustfsAccessKey,
-		RustFSSecretKey: rustfsSecretKey,
-		RustFSBucket:    rustfsBucket,
-		RustFSUseSSL:    rustfsUseSSL,
-		RustFSPublicURL: rustfsPublicURL,
-		ImageMaxWidth:   maxWidth,
-		ImageMaxHeight:  maxHeight,
-		ImageQuality:    quality,
+		RustFSEndpoint:       rustfsEndpoint,
+		RustFSAccessKey:      rustfsAccessKey,
+		RustFSSecretKey:      rustfsSecretKey,
+		RustFSBucket:         rustfsBucket,
+		RustFSUseSSL:         rustfsUseSSL,
+		RustFSPublicURL:      rustfsPublicURL,
+		ImageMaxWidth:        maxWidth,
+		ImageMaxHeight:       maxHeight,
+		ImageQuality:         quality,
+		UpdatesDir:           getEnv("UPDATES_DIR", "/data/updates"),
 	}
 }
 
@@ -134,4 +138,3 @@ func getEnvAsInt(key string, defaultVal int) int {
 	}
 	return defaultVal
 }
-

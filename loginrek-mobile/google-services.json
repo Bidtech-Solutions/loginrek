@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "71925355364",
+    "project_id": "sapakerja-2026",
+    "storage_bucket": "sapakerja-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:71925355364:android:e05cdb88e659ab41c6e071",
+        "android_client_info": {
+          "package_name": "id.co.bidtech.loginrek"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdo8CXjsBxZEIobBiLIiallBUjtLZdowQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

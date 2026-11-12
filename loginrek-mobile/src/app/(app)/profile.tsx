@@ -150,7 +150,7 @@ export default function ProfileScreen() {
       if (!permission.granted) {
         Alert.alert(
           'Izin Galeri Diperlukan',
-          'Login Rek membutuhkan izin akses ke galeri foto Anda agar Anda dapat memilih dan mengubah foto profil akun. Silakan berikan izin di Pengaturan.',
+          'SapaKerja membutuhkan izin akses ke galeri foto Anda agar Anda dapat memilih dan mengubah foto profil akun. Silakan berikan izin di Pengaturan.',
           [{ text: 'Mengerti' }]
         );
         return;

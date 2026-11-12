@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useObserve } from 'expo-observe';
 import { Redirect } from 'expo-router';
 
 import { setAccessToken } from '@/lib/api';
@@ -10,6 +11,7 @@ type Target = '/(app)/home' | '/(auth)/login' | null;
 
 export default function Index() {
   const [target, setTarget] = useState<Target>(null);
+  const { markInteractive } = useObserve();
 
   // Pulihkan sesi dari JWT yang tersimpan di SecureStore, sehingga HP yang sedang offline
   // tetap bisa membuka aplikasi dan menyimpan absen ke antrean (disinkronkan saat online).
@@ -30,6 +32,11 @@ export default function Index() {
       cancelled = true;
     };
   }, []);
+
+  // Sesi sudah dipulihkan dan tujuan awal (home/login) sudah ditentukan: aplikasi siap dipakai.
+  useEffect(() => {
+    if (target) markInteractive();
+  }, [target, markInteractive]);
 
   return <View style={styles.container}>{target && <Redirect href={target} />}</View>;
 }

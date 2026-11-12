@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Timer, 
   ShieldCheck, 
   AtSign, 
   Lock, 
@@ -81,10 +80,10 @@ export default function LoginPage({ onLoginSuccess }) {
           {/* Top Logo */}
           <div className="login-hero-header">
             <div className="brand-logo-icon-lg">
-              <Timer className="icon-timer" size={28} />
+              <img src="/sapakerja-simbol-putih.svg" alt="SapaKerja" width={28} height={28} className="brand-logo-img" />
             </div>
             <div className="brand-header-text">
-              <span className="brand-header-title">Login Rek</span>
+              <span className="brand-header-title">SapaKerja</span>
               <span className="brand-header-sub">HR PORTAL SYSTEM</span>
             </div>
           </div>
@@ -109,7 +108,7 @@ export default function LoginPage({ onLoginSuccess }) {
 
           {/* Bottom Footer Info */}
           <div className="login-hero-footer">
-            <span>Login Rek — Sistem Presensi Cerdas &amp; Terverifikasi</span>
+            <span>SapaKerja — Sistem Presensi Cerdas &amp; Terverifikasi</span>
             <span className="version-tag">v1.0 Otktober 2026</span>
           </div>
         </div>

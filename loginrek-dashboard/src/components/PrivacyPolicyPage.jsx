@@ -1,15 +1,15 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router';
-import { Timer, ShieldCheck, Mail } from 'lucide-react';
+import { ShieldCheck, Mail } from 'lucide-react';
 
 // Nilai yang mungkin berubah — ubah di sini, jangan di teks.
 const COMPANY_NAME = 'PT Solusi Bisnis Jalanin Aja Dulu';
 const CONTACT_EMAIL = 'int.dev.bidtech@gmail.com';
 const LAST_UPDATED = '5 November 2026';
 
-const PAGE_TITLE = 'Kebijakan Privasi - Login Rek';
+const PAGE_TITLE = 'Kebijakan Privasi - SapaKerja';
 const PAGE_DESCRIPTION =
-  'Kebijakan Privasi aplikasi absensi Login Rek: data apa yang dikumpulkan, tujuan penggunaan, izin perangkat, penyimpanan, dan hak karyawan.';
+  'Kebijakan Privasi aplikasi absensi SapaKerja: data apa yang dikumpulkan, tujuan penggunaan, izin perangkat, penyimpanan, dan hak karyawan.';
 
 // Halaman publik (tanpa login, tanpa panggilan API) — didaftarkan sebagai Privacy Policy URL di App Store Connect.
 export default function PrivacyPolicyPage() {
@@ -40,10 +40,10 @@ export default function PrivacyPolicyPage() {
         <div className="privacy-header-inner">
           <div className="privacy-brand">
             <div className="privacy-brand-icon">
-              <Timer size={22} />
+              <img src="/sapakerja-simbol-putih.svg" alt="SapaKerja" width={22} height={22} className="brand-logo-img" />
             </div>
             <div className="privacy-brand-text">
-              <span className="privacy-brand-title">Login Rek</span>
+              <span className="privacy-brand-title">SapaKerja</span>
               <span className="privacy-brand-sub">Kebijakan Privasi</span>
             </div>
           </div>
@@ -57,14 +57,14 @@ export default function PrivacyPolicyPage() {
       <main className="privacy-main">
         <h1 className="privacy-title">Kebijakan Privasi</h1>
         <p className="privacy-lead">
-          Kebijakan ini menjelaskan data pribadi apa yang dikumpulkan LoginRek, untuk apa data itu
+          Kebijakan ini menjelaskan data pribadi apa yang dikumpulkan SapaKerja, untuk apa data itu
           dipakai, dan bagaimana data tersebut dijaga.
         </p>
 
         <section className="privacy-card">
           <h2>1. Pendahuluan</h2>
           <p>
-            LoginRek adalah aplikasi absensi karyawan (iOS, Android, dan dashboard web HR) yang
+            SapaKerja adalah aplikasi absensi karyawan (iOS, Android, dan dashboard web HR) yang
             dikelola oleh {COMPANY_NAME} dan hanya digunakan oleh karyawan perusahaan. Akun dibuat
             oleh HR perusahaan; tidak ada pendaftaran mandiri oleh pengguna.
           </p>
@@ -211,7 +211,7 @@ export default function PrivacyPolicyPage() {
 
       <footer className="privacy-footer">
         <span>
-          &copy; {COMPANY_NAME} · Login Rek
+          &copy; {COMPANY_NAME} · SapaKerja
         </span>
         <Link to="/login" className="privacy-footer-link">
           Ke halaman masuk

@@ -1,28 +1,33 @@
 {
   "expo": {
-    "name": "loginrek",
+    "name": "SapaKerja",
     "slug": "loginrek",
     "scheme": "loginrek",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "id.co.bidtech.loginrek",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "loginrek membutuhkan akses kamera untuk foto selfie absensi.",
-        "NSLocationWhenInUseUsageDescription": "loginrek membutuhkan akses lokasi untuk memastikan Anda berada di area kantor.",
-        "NSPhotoLibraryUsageDescription": "loginrek membutuhkan izin akses galeri foto untuk mengubah foto profil akun Anda."
+        "NSCameraUsageDescription": "SapaKerja membutuhkan akses kamera untuk foto selfie absensi.",
+        "NSLocationWhenInUseUsageDescription": "SapaKerja membutuhkan akses lokasi untuk memastikan Anda berada di area kantor.",
+        "NSPhotoLibraryUsageDescription": "SapaKerja membutuhkan izin akses galeri foto untuk mengubah foto profil akun Anda.",
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
       "package": "id.co.bidtech.loginrek",
-      "versionCode": 2,
+      "config": {
+          "googleMaps": { "apiKey": "AIzaSyBIPE5ig24GNm1qoVCvrAXl2WHqKy5U5kA" }
+        },      
+      "versionCode": 3,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#0E7C86",
+        "backgroundColor": "#0B7F78",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -33,7 +38,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -48,7 +54,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#0E7C86"
+          "backgroundColor": "#0B7F78"
         }
       ],
       "expo-font",
@@ -66,6 +72,29 @@
             "useLegacyPackaging": true
           }
         }
+      ],
+      "expo-sqlite",
+      "expo-image",
+      "expo-localization",
+      "expo-background-task",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "sapakerja",
+          "organization": "pt-solusi-bisnis-jalanin-aja-d"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0B7F78",
+          "defaultChannel": "default",
+          "sounds": [
+            "./assets/notifications/sapakerja-notification.wav"
+          ]
+        }
       ]
     ],
     "experiments": {
@@ -78,9 +107,23 @@
         }
       },
       "eas": {
-        "projectId": "09453540-1166-4260-a949-8eb417e8e778"
+        "projectId": "da2c26bc-bc7b-447e-a50e-160af56919a7"
       }
     },
-    "owner": "timmmyzz"
+    "owner": "bidtech-solutions",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://api.sapakerja.com/updates/manifest",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "codeSigningCertificate": "./certs/certificate.pem",
+      "codeSigningMetadata": {
+        "keyid": "main",
+        "alg": "rsa-v1_5-sha256"
+      }
+    }
   }
 }

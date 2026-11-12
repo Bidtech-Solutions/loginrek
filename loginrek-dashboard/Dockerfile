@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: loginrek-dashboard/
-#   docker build --build-arg VITE_API_URL=https://loginrek-api.bidtech.co.id -t loginrek-dashboard loginrek-dashboard
+#   docker build --build-arg VITE_API_URL=https://api.sapakerja.com -t loginrek-dashboard loginrek-dashboard
 #
 # Dashboard = SPA statis (React + Vite + React Router). Hasil build disajikan Nginx;
 # TLS, domain, dan header keamanan ditangani Traefik (lihat docker-compose.prod.yml).

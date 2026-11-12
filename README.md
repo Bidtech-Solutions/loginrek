@@ -1,4 +1,6 @@
-# loginrek
+# SapaKerja
+
+> Nama produk: **SapaKerja** (sebelumnya prototipe "loginrek"). Nama folder, slug EAS, bundle id `id.co.bidtech.loginrek`, go module, image Docker, dan domain email akun sengaja tetap memakai `loginrek`.
 
 Sistem absensi & HR internal. Karyawan absen (GPS + selfie) lewat aplikasi mobile; admin/HR
 memantau dan mengelola data lewat dashboard web; keduanya memakai satu REST API.
@@ -208,7 +210,9 @@ di VPS di belakang Traefik:
 
 | URL | Service |
 | --- | ------- |
-| https://loginrek.bidtech.co.id | dashboard HR |
-| https://loginrek-api.bidtech.co.id | REST API + foto `/uploads/*` (dipakai mobile & dashboard) |
+| https://sapakerja.com | dashboard HR |
+| https://api.sapakerja.com | REST API + foto `/uploads/*` + update OTA (dipakai mobile & dashboard) |
+| https://loginrek.bidtech.co.id | domain lama dashboard — tetap dilayani langsung (bukan redirect) |
+| https://loginrek-api.bidtech.co.id | domain lama API — tetap dilayani langsung; dipakai HP dengan build lama, jangan di-redirect (merusak POST + header `Authorization`) |
 
 Secrets dan variabel server: lihat komentar di workflow dan `.env.example`.

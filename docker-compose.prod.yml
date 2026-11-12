@@ -8,8 +8,10 @@
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Traefik (jaringan eksternal `traefik-network`) yang menerima trafik publik:
-#   https://${DASHBOARD_DOMAIN}  -> lr-dashboard  (HR web, mis. loginrek.bidtech.co.id)
-#   https://${API_DOMAIN}        -> lr-backend    (REST API + foto di /uploads/*)
+#   https://${DASHBOARD_DOMAIN}  -> lr-dashboard  (HR web, mis. sapakerja.com)
+#   https://${API_DOMAIN}        -> lr-backend    (REST API + foto di /uploads/*, mis. api.sapakerja.com)
+# Domain lama (*_LEGACY, mis. loginrek.bidtech.co.id) dilayani langsung oleh container yang sama, TANPA redirect:
+# HP dengan build lama masih memakai API_DOMAIN_LEGACY, dan redirect akan merusak POST + header Authorization.
 # RustFS (object storage) hanya di jaringan internal — tidak diekspos ke Traefik/publik;
 # foto disajikan backend lewat GET /uploads/*. Tidak ada port aplikasi yang dipublikasikan
 # ke host; konsol RustFS hanya lewat SSH tunnel.
@@ -55,7 +57,7 @@ services:
       - traefik.http.middlewares.lr-compress.compress=true
       # --- dashboard ---
       - traefik.http.services.lr-dashboard.loadbalancer.server.port=80
-      - traefik.http.routers.lr-dashboard.rule=Host(`${DASHBOARD_DOMAIN}`)
+      - traefik.http.routers.lr-dashboard.rule=Host(`${DASHBOARD_DOMAIN}`) || Host(`${DASHBOARD_DOMAIN_LEGACY:-${DASHBOARD_DOMAIN}}`)
       - traefik.http.routers.lr-dashboard.entrypoints=websecure
       - traefik.http.routers.lr-dashboard.tls.certresolver=letsencrypt
       - traefik.http.routers.lr-dashboard.service=lr-dashboard
@@ -79,7 +81,7 @@ services:
       DB_NAME: ${DB_NAME:-loginrek_db}
       DB_SSLMODE: disable
       JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET di .env}
-      CORS_ORIGINS: https://${DASHBOARD_DOMAIN:?isi DASHBOARD_DOMAIN di .env}
+      CORS_ORIGINS: https://${DASHBOARD_DOMAIN:?isi DASHBOARD_DOMAIN di .env},https://${DASHBOARD_DOMAIN_LEGACY:-${DASHBOARD_DOMAIN}}
       # Akun HR/admin pertama (dibuat sekali saat tabel users kosong); karyawan uji tidak dibuat di production
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?isi SEED_ADMIN_EMAIL di .env}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?isi SEED_ADMIN_PASSWORD di .env}
@@ -92,8 +94,12 @@ services:
       IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-1280}
       IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-720}
       IMAGE_WEBP_QUALITY: ${IMAGE_WEBP_QUALITY:-80}
+      UPDATES_DIR: /data/updates       # OTA expo-updates: disajikan di /updates/* (isi dari volume ./updates di bawah)
     volumes:
       - uploads_data:/app/public/uploads   # = WORKDIR /app + public/uploads di Dockerfile (fallback foto & aset)
+      # Berkas OTA ditulis job publish-ota ke $DEPLOY_PATH/updates (di samping compose ini); read-only di container.
+      # Container jalan sebagai UID 10001: folder harus 755 dan berkas 644 (job publish-ota menjalankan chmod a+rX).
+      - ./updates:/data/updates:ro
     networks: [ traefik, internal ]
     depends_on:
       lr-postgres: { condition: service_healthy }
@@ -108,7 +114,7 @@ services:
       # Domain diproksi Cloudflare: hitung rate limit per IP klien asli
       - traefik.http.middlewares.lr-api-ratelimit.ratelimit.sourcecriterion.requestheadername=CF-Connecting-IP
       - traefik.http.services.lr-api.loadbalancer.server.port=3333
-      - traefik.http.routers.lr-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.lr-api.rule=Host(`${API_DOMAIN}`) || Host(`${API_DOMAIN_LEGACY:-${API_DOMAIN}}`)
       - traefik.http.routers.lr-api.entrypoints=websecure
       - traefik.http.routers.lr-api.tls.certresolver=letsencrypt
       - traefik.http.routers.lr-api.service=lr-api

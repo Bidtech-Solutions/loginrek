@@ -1,4 +1,4 @@
-# REST API — loginrek
+# REST API — SapaKerja
 
 Dilayani oleh `loginrek-backend` (Go + Gin). Dipakai oleh `loginrek-mobile` (karyawan) dan
 `loginrek-dashboard` (HR/admin).
@@ -6,7 +6,7 @@ Dilayani oleh `loginrek-backend` (Go + Gin). Dipakai oleh `loginrek-mobile` (kar
 > **Sumber kebenaran adalah kode**: route di `loginrek-backend/internal/router/router.go`,
 > logika di `internal/handler/`. Dokumen ini wajib diperbarui di PR yang sama dengan perubahan endpoint.
 
-Base URL production: `https://loginrek-api.bidtech.co.id/api/v1`.
+Base URL production: `https://api.sapakerja.com/api/v1`. Host lama `https://loginrek-api.bidtech.co.id` tetap dilayani untuk HP dengan build lama.
 Dev: `http://localhost:3333/api/v1`, emulator Android: `http://10.0.2.2:3333/api/v1`.
 
 ## Konvensi
@@ -61,6 +61,11 @@ hanya dapat memakai mobile; dashboard menolaknya.
 | POST | `/employees` | 👑 | tambah karyawan |
 | PUT | `/employees/:id` | 👑 | ubah karyawan |
 | DELETE | `/employees/:id` | 👑 | hapus karyawan + presensinya (cascade); akun admin ditolak |
+| GET | `/updates/manifest` (di luar `/api/v1`) | – | manifest update OTA (Expo Updates v1) |
+| GET, HEAD | `/updates/files/*` (di luar `/api/v1`) | – | bundle & aset update OTA |
+
+<!-- DIUBAH (OTA): dua baris `/updates/*` di tabel di atas baru; keduanya publik dan di luar /api/v1. Rincian: bagian "Update OTA". -->
+
 
 ### `POST /auth/login`
 ```json
@@ -143,6 +148,42 @@ Query: `page` (1), `limit` (20), `all=true` (limit 500), `date=YYYY-MM-DD`. Urut
 Opsional: `email` (dibuat otomatis bila kosong; 400 bila sudah terdaftar), `department`,
 `employeeType`, `phone`, `avatarUrl`. Akun baru selalu `isAdmin = false`. `PUT` menerima field
 yang sama, semuanya opsional. Respons: 201 / 200.
+
+<!-- DIUBAH (OTA): seluruh bagian "Update OTA" baru; sumbernya loginrek-backend/internal/updates/updates.go. -->
+## Update OTA (expo-updates)
+
+Server update untuk `expo-updates` (protokol **Expo Updates v1**). **Publik** (tanpa JWT) dan **bukan** bagian dari
+`/api/v1`: URL production `https://api.sapakerja.com/updates/manifest` (diset di `app.json` → `updates.url`).
+Tidak memakai amplop `{ "data": ... }`; error berupa teks biasa. Isi disajikan dari folder `UPDATES_DIR`
+(production: `/data/updates`, read-only); cara kerja dan tata letaknya ada di `ARCHITECTURE.md`.
+
+### `GET /updates/manifest`
+Header permintaan (dikirim otomatis oleh klien):
+
+| Header | Keterangan |
+| ------ | ---------- |
+| `expo-platform` | wajib: `ios` atau `android` |
+| `expo-runtime-version` | wajib, mis. `1.0.2`; hanya `A-Z a-z 0-9 . _ -` (maks. 64) |
+| `expo-channel-name` | opsional, default `production`; format sama seperti runtime |
+| `expo-protocol-version` | opsional; bila ada harus `1` |
+| `expo-expect-signature` | bila ada, respons menyertakan tanda tangan (code signing) |
+
+Respons:
+
+| Status | Arti |
+| ------ | ---- |
+| 200 | `multipart/mixed` dengan satu bagian `manifest` (JSON). Bila `expo-expect-signature` dikirim, bagian itu memuat header `expo-signature: sig="<base64>", keyid="main"` (RSA-SHA256 atas byte manifest persis seperti dikirim). |
+| 204 | belum ada update untuk (channel, runtime) ini; klien tetap memakai bundle bawaan |
+| 400 | `expo-platform` / `expo-runtime-version` / `expo-channel-name` tidak valid, atau `expo-protocol-version` ≠ `1` |
+| 405 | method selain GET |
+| 500 | `latest.json` / manifest / tanda tangan di server rusak atau hilang |
+
+Header respons (200 dan 204): `expo-protocol-version: 1`, `expo-sfv-version: 0`, `cache-control: private, max-age=0`.
+
+### `GET|HEAD /updates/files/<channel>/<runtime>/<publishId>/<path>`
+Bundle (`_expo/static/js/<platform>/*.hbc`) dan aset. URL-nya muncul di manifest. Karena `publishId` ada di path, isinya tidak
+pernah berubah: `Cache-Control: public, max-age=31536000, immutable` (aman di-cache Cloudflare). Pengecualian
+`latest.json`: `no-store`. Daftar isi folder → 404; method selain GET/HEAD → 405.
 
 ## Rencana (belum ada)
 

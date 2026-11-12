@@ -7,6 +7,7 @@ import (
 	"loginrek-backend/internal/handler"
 	"loginrek-backend/internal/middleware"
 	"loginrek-backend/internal/storage"
+	"loginrek-backend/internal/updates"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -16,7 +17,7 @@ import (
 const maxBodyBytes = 15 << 20
 
 // New merakit semua route beserta proteksinya:
-//   - publik            : /health, /uploads/*key, POST /api/v1/auth/login
+//   - publik            : /health, /uploads/*key, /updates/* (OTA expo-updates), POST /api/v1/auth/login
 //   - wajib login       : profil, presensi karyawan (mobile & dashboard)
 //   - wajib HR/admin    : manajemen karyawan dan rekap presensi (dashboard)
 func New(cfg *config.Config, db *gorm.DB, store storage.StorageService) *gin.Engine {
@@ -51,6 +52,12 @@ func New(cfg *config.Config, db *gorm.DB, store storage.StorageService) *gin.Eng
 		c.JSON(code, gin.H{"status": status, "database": dbStatus, "storage": storageKind})
 	})
 	r.GET("/uploads/*key", mediaHandler.Serve)
+
+	// Server update OTA (expo-updates): /updates/manifest dan /updates/files/*. Sengaja publik:
+	// klien app memanggilnya sebelum login, dan keabsahan update dijaga tanda tangan code signing.
+	updatesHandler := gin.WrapH(http.StripPrefix("/updates", updates.NewHandler(cfg.UpdatesDir)))
+	r.GET("/updates/*path", updatesHandler)
+	r.HEAD("/updates/*path", updatesHandler)
 
 	api := r.Group("/api/v1")
 	api.POST("/auth/login", authHandler.Login)

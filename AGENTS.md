@@ -17,6 +17,11 @@ lewat **dashboard** web; keduanya memakai **backend** REST API.
 
 Kontrak API: `docs/API.md`. Bila endpoint belum ada, sebutkan — jangan mengarang bentuk respons.
 
+**Nama produk: SapaKerja** (sebelumnya prototipe "loginrek"). Teks yang dilihat pengguna memakai SapaKerja. Identifier teknis **sengaja tetap `loginrek`**
+dan jangan diganti tanpa persetujuan: nama folder `loginrek-*`, slug/projectId EAS, `bundleIdentifier`/`package` `id.co.bidtech.loginrek`, `scheme`, go module,
+image Docker, kunci penyimpanan (`loginrek.*`), dan domain email akun `@loginrek.com`. Domain: dashboard `sapakerja.com`, API `api.sapakerja.com`;
+domain lama (`loginrek.bidtech.co.id`, `loginrek-api.bidtech.co.id`) tetap dilayani langsung tanpa redirect (lihat `docs/ARCHITECTURE.md`).
+
 ## Env
 
 Satu file `.env` di **root** untuk semua produk (salin dari `.env.example`); jangan membuat
@@ -88,12 +93,15 @@ Cek versi major `expo` di `package.json`, lalu buka dokumentasi versi itu
 6. Teks UI Bahasa Indonesia; nama kode bahasa Inggris. Import pakai alias `@/...`.
 7. Utamakan modul Expo (`expo-camera`, `expo-location`, ...) — tersedia di Expo Go.
 8. Permission dikonfigurasi lewat plugin `app.json` dengan alasan Bahasa Indonesia, diminta tepat sebelum dipakai.
+9. OTA (expo-updates ke server sendiri): commit JS/aset di `loginrek-mobile/` dirilis otomatis oleh job `publish-ota`
+   (`.github/workflows/loginrek.yml`); perubahan native/`app.json`/`google-services.json`/sertifikat ditolak CI dan butuh `eas build` +
+   `rebase_native`. Jangan commit `keys/`. Detail: `docs/ARCHITECTURE.md` ("Update OTA").
 
 ### Jangan
 - Membuat/mengedit `ios/` atau `android/` manual (di-generate, di-ignore git). Ubah lewat `app.json` / config plugin.
 - Menambah library native yang tidak ada di Expo Go tanpa diskusi (mewajibkan development build + Apple Developer).
 - `npm install <pkg>` langsung untuk library RN/Expo.
-- Mengubah `bundleIdentifier`/`package` (`com.loginrek`) tanpa persetujuan — memutus update di store.
+- Mengubah `bundleIdentifier`/`package` (`id.co.bidtech.loginrek`) tanpa persetujuan — memutus update di store.
 
 ## Definition of done
 

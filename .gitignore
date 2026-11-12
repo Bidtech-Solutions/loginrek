@@ -99,8 +99,13 @@ ehthumbs.db
 
 # --- Agent / AI Settings ---
 .claude/settings.local.json
-package-lock.json*
+package-lock.json
 
 # Google service account keys
 driven-striker-*.json
 service-account.json
+
+# OTA code signing: private key JANGAN pernah di-commit (isi ke secret UPDATE_SIGNING_KEY).
+# Sertifikat publik (ditanam di app lewat app.json) boleh di-commit; *.pem di atas dikecualikan untuk file ini saja.
+loginrek-mobile/keys/
+!loginrek-mobile/certs/certificate.pem

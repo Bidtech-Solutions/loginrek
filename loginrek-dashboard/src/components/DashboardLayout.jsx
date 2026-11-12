@@ -27,7 +27,7 @@ export default function DashboardLayout({ adminData, onLogout, onGoToLogin }) {
           >
             <Menu size={22} />
           </button>
-          <div className="mobile-brand-title">Login Rek</div>
+          <div className="mobile-brand-title">SapaKerja</div>
           <button 
             className="mobile-quick-switch"
             onClick={onGoToLogin}

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 
 import { authApi, setAccessToken, ApiError } from '@/lib/api';
@@ -106,12 +107,16 @@ export default function LoginScreen() {
         end={{ x: 0.9, y: 1 }}
         style={[styles.headerGradient, { paddingTop: insets.top + 28 }]}
       >
-        {/* Ikon Stopwatch Login Rek */}
+        {/* Logo SapaKerja */}
         <View style={styles.logoContainer}>
           <View style={styles.logoBadge}>
-            <MaterialCommunityIcons name="timer-check-outline" size={38} color="#05564E" />
+            <Image
+              source={require('@/assets/logo-symbol.png')}
+              style={styles.logoImage}
+              accessibilityLabel="Logo SapaKerja"
+            />
           </View>
-          <Text style={styles.brandTitle}>Login Rek</Text>
+          <Text style={styles.brandTitle}>SapaKerja</Text>
           <Text style={styles.brandSubtitle}>Simpan akunmu dengan mudah</Text>
         </View>
       </LinearGradient>
@@ -243,6 +248,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 6,
+  },
+  logoImage: {
+    width: 48,
+    height: 48,
   },
   brandTitle: {
     marginTop: 14,

@@ -5,7 +5,6 @@ import {
   Users, 
   Sliders, 
   LogOut, 
-  Timer,
   Menu,
   X
 } from 'lucide-react';
@@ -49,10 +48,10 @@ export default function Sidebar({ adminData, onLogout, isMobileOpen, setIsMobile
           {/* Top Brand Logo */}
           <div className="sidebar-brand">
             <div className="brand-logo-icon">
-              <Timer className="icon-timer" size={24} />
+              <img src="/sapakerja-simbol-putih.svg" alt="SapaKerja" width={24} height={24} className="brand-logo-img" />
             </div>
             <div className="brand-text">
-              <h1 className="brand-title">Login Rek</h1>
+              <h1 className="brand-title">SapaKerja</h1>
               <span className="brand-badge">PORTAL ADMIN</span>
             </div>
             {isMobileOpen && (
