@@ -92,7 +92,7 @@
           "color": "#0B7F78",
           "defaultChannel": "default",
           "sounds": [
-            "./assets/notifications/sapakerja-notification.wav"
+            "./assets/notifications/sapakerja_notification.wav"
           ]
         }
       ]
