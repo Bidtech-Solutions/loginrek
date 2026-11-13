@@ -25,6 +25,7 @@ import { authApi, ApiError, setAccessToken } from '@/lib/api';
 import { tokenStorage } from '@/lib/token-storage';
 import { userStore, UserAccount } from '@/lib/user-store';
 import { permissionStore } from '@/lib/permission-store';
+import { AppVersionInfo } from '@/components/AppVersionInfo';
 
 // Format jam realtime 24 jam (contoh: 13:00 untuk 1 siang, 16:00 untuk 4 sore)
 function formatTime24(date: Date): string {
@@ -398,6 +399,9 @@ export default function ProfileScreen() {
             <Feather name="log-out" size={18} color="#DC2626" style={styles.logoutIcon} />
             <Text style={styles.logoutButtonText}>Keluar dari Akun</Text>
           </Pressable>
+
+          {/* Info versi aplikasi: lingkungan, versi, build, rilis OTA */}
+          <AppVersionInfo />
         </ScrollView>
       </KeyboardAvoidingView>
 

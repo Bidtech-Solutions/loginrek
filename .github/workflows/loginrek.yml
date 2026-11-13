@@ -691,7 +691,7 @@ jobs:
               runtimeVersion,
               launchAsset,
               assets,
-              metadata: {},
+              metadata: { publishId }, // dibaca layar Profil mobile (src/lib/app-info.ts)
               extra: { expoClient: expoConfig },
             };
 
