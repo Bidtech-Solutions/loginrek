@@ -4,8 +4,8 @@ import { ShieldCheck, Mail } from 'lucide-react';
 
 // Nilai yang mungkin berubah — ubah di sini, jangan di teks.
 const COMPANY_NAME = 'PT Solusi Bisnis Jalanin Aja Dulu';
-const CONTACT_EMAIL = 'int.dev.bidtech@gmail.com';
-const LAST_UPDATED = '5 November 2026';
+const CONTACT_EMAIL = 'cs@bidtech.co.id';
+const LAST_UPDATED = '13 November 2026';
 
 const PAGE_TITLE = 'Kebijakan Privasi - SapaKerja';
 const PAGE_DESCRIPTION =
@@ -32,6 +32,13 @@ export default function PrivacyPolicyPage() {
       if (created) meta.remove();
       else if (prevDescription !== null) meta.setAttribute('content', prevDescription);
     };
+  }, []);
+
+  // Halaman dirender di sisi klien, jadi anchor (#attendance-photos) belum ada saat peramban
+  // mencoba menggulir ke sana saat load. Gulirkan manual setelah konten terpasang.
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (id) document.getElementById(id)?.scrollIntoView();
   }, []);
 
   return (
@@ -99,8 +106,43 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
+        <section className="privacy-card" id="attendance-photos">
+          <h2>3. Foto Presensi (Attendance Photos)</h2>
+          <p>
+            Saat melakukan presensi, SapaKerja mengambil satu foto melalui kamera perangkat sebagai
+            bukti kehadiran di lokasi kantor yang telah ditentukan. Foto dapat menampilkan wajah
+            pengguna, namun SapaKerja tidak melakukan deteksi wajah maupun pengenalan wajah, tidak
+            membuat data biometrik atau pola wajah (face template), dan tidak menganalisis foto
+            secara otomatis. Foto disimpan di server yang dikelola oleh {COMPANY_NAME}, hanya dapat
+            diakses oleh tim HR/admin perusahaan tempat pengguna bekerja, tidak dibagikan kepada
+            pihak ketiga mana pun, dan disimpan selama satu tahun sejak data presensi dibuat sebelum dihapus. Pengguna
+            atau perusahaan dapat meminta penghapusan foto lebih awal dengan menghubungi{' '}
+            <a className="privacy-link" href={`mailto:${CONTACT_EMAIL}`}>
+              {CONTACT_EMAIL}
+            </a>
+            .
+          </p>
+          <p className="privacy-lang-label" lang="en">
+            English
+          </p>
+          <p lang="en">
+            When checking in, SapaKerja captures a single photo through the device camera as proof
+            of attendance at the designated office location. The photo may show the user&apos;s
+            face, but SapaKerja does not perform face detection or facial recognition, does not
+            create biometric data or face templates, and does not automatically analyze photos.
+            Photos are stored on servers operated by {COMPANY_NAME}, are only accessible to the
+            HR/admin team of the user&apos;s employer, are not shared with any third parties, and
+            are retained for one year after the attendance record is created before being deleted. Users or their employer may
+            request earlier deletion by contacting{' '}
+            <a className="privacy-link" href={`mailto:${CONTACT_EMAIL}`}>
+              {CONTACT_EMAIL}
+            </a>
+            .
+          </p>
+        </section>
+
         <section className="privacy-card">
-          <h2>3. Tujuan penggunaan</h2>
+          <h2>4. Tujuan penggunaan</h2>
           <ul>
             <li>Mencatat dan memverifikasi kehadiran karyawan.</li>
             <li>Menghitung ketepatan waktu kehadiran.</li>
@@ -115,7 +157,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>4. Izin perangkat</h2>
+          <h2>5. Izin perangkat</h2>
           <ul>
             <li>
               <strong>Kamera</strong> — mengambil foto selfie untuk presensi.
@@ -137,7 +179,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>5. Siapa yang dapat mengakses</h2>
+          <h2>6. Siapa yang dapat mengakses</h2>
           <p>
             Data presensi dan profil dapat diakses oleh karyawan yang bersangkutan dan oleh
             admin/HR {COMPANY_NAME}. Data tidak dibagikan kepada pihak ketiga, kecuali bila
@@ -153,7 +195,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>6. Penyimpanan dan keamanan</h2>
+          <h2>7. Penyimpanan dan keamanan</h2>
           <ul>
             <li>Data dikirim antara aplikasi/dashboard dan server melalui HTTPS.</li>
             <li>Kata sandi disimpan dalam bentuk hash, bukan teks asli.</li>
@@ -168,7 +210,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>7. Retensi data</h2>
+          <h2>8. Retensi data</h2>
           <p>
             Data disimpan selama karyawan aktif dan selama diperlukan untuk keperluan kepegawaian
             serta kewajiban hukum perusahaan. Setelah itu, data dihapus atau dianonimkan.
@@ -176,7 +218,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>8. Hak karyawan</h2>
+          <h2>9. Hak karyawan</h2>
           <p>
             Anda dapat meminta akses, koreksi, atau penghapusan data pribadi Anda melalui HR
             perusahaan atau melalui email{' '}
@@ -189,7 +231,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>9. Anak-anak</h2>
+          <h2>10. Anak-anak</h2>
           <p>
             Aplikasi ini tidak ditujukan untuk anak di bawah 13 tahun. Seluruh akun dibuat dan
             dikelola oleh HR perusahaan; tidak ada pendaftaran mandiri.
@@ -197,7 +239,7 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="privacy-card">
-          <h2>10. Perubahan kebijakan dan kontak</h2>
+          <h2>11. Perubahan kebijakan dan kontak</h2>
           <p>
             Kebijakan ini dapat diperbarui sewaktu-waktu. Tanggal pembaruan terakhir tercantum di
             bagian atas halaman ini. Untuk pertanyaan tentang kebijakan ini, hubungi kami:

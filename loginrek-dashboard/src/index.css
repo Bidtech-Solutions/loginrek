@@ -5305,6 +5305,16 @@ a {
   color: var(--slate-700);
 }
 
+.privacy-card p.privacy-lang-label {
+  margin-top: 16px;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--teal-700);
+}
+
 .privacy-link {
   color: var(--teal-600);
   font-weight: 600;
