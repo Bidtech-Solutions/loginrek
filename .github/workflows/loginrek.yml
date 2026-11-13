@@ -644,7 +644,9 @@ jobs:
           const runtimeVersion = resolveRuntime(expoConfig);
           if (!SAFE.test(runtimeVersion)) fail(`runtimeVersion tidak valid: ${runtimeVersion}`);
 
-          const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+          // Waktu WIB (UTC+7). Hanya dipakai untuk label publishId; runner GitHub berjalan di UTC.
+          const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
+          const stamp = wib.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'WIB');
           const sha = (process.env.GITHUB_SHA ?? 'local').slice(0, 7);
           const publishId = `${stamp}-${sha}`;
 

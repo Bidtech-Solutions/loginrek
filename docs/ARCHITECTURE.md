@@ -186,7 +186,7 @@ HP ──GET /updates/files/…──► bundle & aset (immutable)
 - **Channel & runtime**: header `expo-channel-name: production` (`app.json`, cocok dengan `eas.json` profil `production`), runtime = `version`
   (`runtimeVersion.policy: appVersion`). Profil `development`/`preview`/`production-internal` punya channel sendiri dan **tidak** menerima OTA ini.
   Nilai `EXPO_PUBLIC_*` diambil dari `eas.json` (`build.production.env`) agar bundle OTA identik dengan build production.
-- **Penanda rilis**: setiap rilis punya `publishId` (`<timestamp UTC>-<SHA 7 karakter>`, nama folder di `updates/`). CI menaruhnya di
+- **Penanda rilis**: setiap rilis punya `publishId` (`<timestamp WIB>-<SHA 7 karakter>`, nama folder di `updates/`). CI menaruhnya di
   `manifest.metadata.publishId` (ikut ditandatangani). Layar Profil mobile menampilkan lingkungan, `v<version> Build (<nomor>)`, dan
   `publishId` (atau "Bawaan build" bila belum ada update OTA) lewat `src/lib/app-info.ts`. Rilis sebelum penanda ini ditambahkan
   tidak punya `publishId`; aplikasi menampilkan 8 karakter pertama `updateId` sebagai gantinya.
